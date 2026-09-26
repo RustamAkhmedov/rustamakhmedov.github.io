@@ -5,8 +5,8 @@
   --card-bg: #ffffffb8;
   --border: #ffffffd9;
   --shadow: 0 10px 30px #3b2fa01f;
-  --sat: 85%;
-  --lit: 52%;
+  --sat: 55%;
+  --lit: 55%;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -29,10 +29,8 @@ body {
   font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background-color: var(--bg);
   background-image:
-    radial-gradient(circle at 8% 12%, #ff5fa2aa 0, transparent 38%),
-    radial-gradient(circle at 92% 8%, #35d0ffaa 0, transparent 40%),
-    radial-gradient(circle at 80% 92%, #8b5cf6aa 0, transparent 42%),
-    radial-gradient(circle at 12% 88%, #ffb340aa 0, transparent 38%);
+    radial-gradient(circle at 10% 0%, #8b5cf633 0, transparent 45%),
+    radial-gradient(circle at 95% 100%, #06b6d42e 0, transparent 45%);
   background-attachment: fixed;
   background-size: 100% 100%;
 }
@@ -53,18 +51,16 @@ h1 {
   line-height: 1.05;
   margin: 0 0 10px;
   letter-spacing: -.03em;
-  color: #7c3aed;
-  background: linear-gradient(90deg, #ff3d8b, #ff9f1c 30%, #22c55e 55%, #06b6d4 75%, #8b5cf6);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
+  color: var(--text);
+  background: none;
+  }
 .sub { color: var(--muted); margin: 0; font-size: 1.1rem; max-width: 52ch; }
 .hero-links { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 .pill {
   padding: 8px 18px; border-radius: 999px; font-size: .9rem; font-weight: 600;
-  text-decoration: none; color: #fff;
-  background: linear-gradient(90deg, #ff3d8b, #8b5cf6);
+  text-decoration: none;
+  background: var(--text);
+  color: var(--bg);
   box-shadow: var(--shadow);
   transition: transform .15s, filter .15s;
 }
@@ -87,7 +83,7 @@ input[type=search]:focus { outline: 3px solid #8b5cf6; outline-offset: 2px; }
 
 .notice {
   background: var(--card-bg); border: 1px solid var(--border);
-  border-left: 5px solid #ff3d8b; border-radius: 14px;
+  border-left: 4px solid #8b5cf6; border-radius: 14px;
   padding: 16px 20px; margin-bottom: 24px; box-shadow: var(--shadow);
 }
 .notice strong { display: block; margin-bottom: 4px; }
@@ -108,7 +104,7 @@ input[type=search]:focus { outline: 3px solid #8b5cf6; outline-offset: 2px; }
   padding: 26px 24px 20px;
   min-height: 210px;
   background:
-    linear-gradient(160deg, color-mix(in srgb, var(--c) 22%, transparent), transparent 60%),
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 9%, transparent), transparent 55%),
     var(--card-bg);
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   border: 1px solid var(--border);
@@ -120,18 +116,18 @@ input[type=search]:focus { outline: 3px solid #8b5cf6; outline-offset: 2px; }
   animation-delay: calc(var(--i, 0) * 70ms);
 }
 .card::before {
-  content: ""; position: absolute; inset: 0 0 auto 0; height: 6px;
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
   background: linear-gradient(90deg, var(--c), var(--c2));
 }
 .card:hover, .card:focus-visible {
-  transform: translateY(-6px) scale(1.01);
-  box-shadow: 0 18px 44px color-mix(in srgb, var(--c) 45%, transparent);
+  transform: translateY(-3px);
+  box-shadow: 0 18px 44px color-mix(in srgb, var(--c) 25%, transparent);
   outline: none;
 }
 .card h2 { font-size: 1.35rem; margin: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .card h2 .arrow {
   display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
-  color: #fff; font-size: 1rem; background: linear-gradient(135deg, var(--c), var(--c2));
+  color: #fff; font-size: 1rem; background: var(--c);
   transition: transform .2s;
 }
 .card:hover .arrow { transform: rotate(45deg); }
@@ -139,7 +135,7 @@ input[type=search]:focus { outline: 3px solid #8b5cf6; outline-offset: 2px; }
 .meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: .8rem; }
 .meta span {
   padding: 3px 11px; border-radius: 999px; font-weight: 600;
-  background: color-mix(in srgb, var(--c) 20%, transparent);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
 }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 .gh { font-size: .78rem; color: var(--muted); padding-top: 10px; border-top: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
