@@ -5,15 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Rustam Akhmedov – Projekte</title>
   <meta name="description" content="Übersicht meiner auf GitHub Pages gehosteten Projekte.">
+  <link rel="icon" href="https://github.com/RustamAkhmedov.png?size=64">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body data-page="home">
   <main>
-    <h1>Projekte</h1>
-    <p class="sub">Meine auf GitHub Pages gehosteten Projekte – live von GitHub geladen.</p>
-    <input id="search" type="search" placeholder="Projekte durchsuchen…" aria-label="Projekte durchsuchen">
-    <div id="projects" class="grid"><div class="state">Lade Projekte…</div></div>
-    <footer><a href="https://github.com/rustamakhmedov">github.com/rustamakhmedov</a></footer>
+    <header class="hero">
+      <img class="avatar" src="https://github.com/RustamAkhmedov.png?size=200" alt="Rustam Akhmedov" width="84" height="84">
+      <div>
+        <h1>Rustam Akhmedov</h1>
+        <p class="sub">Meine Projekte auf GitHub Pages – live von GitHub geladen.</p>
+        <div class="hero-links">
+          <a class="pill" href="https://github.com/RustamAkhmedov">GitHub-Profil ↗</a>
+        </div>
+      </div>
+    </header>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Projekte durchsuchen…" aria-label="Projekte durchsuchen">
+      <span id="count" class="count"></span>
+    </div>
+    <div id="projects" class="grid"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+    <footer>Automatisch aus den GitHub-Repos mit aktivem Pages erzeugt</footer>
   </main>
   <script src="/app.js"></script>
 </body>

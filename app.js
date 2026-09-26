@@ -35,23 +35,28 @@
     return data;
   }
 
-  function card(p) {
+  const LANG_COLORS = { JavaScript: "#f1e05a", TypeScript: "#3178c6", HTML: "#e34c26", CSS: "#a855f7", Java: "#b07219", Python: "#3572a5", Kotlin: "#a97bff", "C#": "#178600", "C++": "#f34b7d", Go: "#00add8", Rust: "#dea584", Shell: "#89e051" };
+
+  function card(p, i = 0) {
     const date = new Date(p.updated).toLocaleDateString("de-DE", { year: "numeric", month: "short", day: "numeric" });
-    return `<a class="card" href="${esc(p.url)}">
-      <h2>${esc(p.name)}</h2>
+    const color = LANG_COLORS[p.language] || "#8b8bff";
+    return `<a class="card" style="--i:${Math.min(i, 12)}" href="${esc(p.url)}">
+      <h2>${esc(p.name)} <span class="arrow" aria-hidden="true">↗</span></h2>
       <p>${esc(p.description) || "Keine Beschreibung"}</p>
       <div class="meta">
-        ${p.language ? `<span>${esc(p.language)}</span>` : ""}
+        ${p.language ? `<span><i class="dot" style="background:${color}"></i>${esc(p.language)}</span>` : ""}
         ${p.stars ? `<span>★ ${p.stars}</span>` : ""}
-        <span>aktualisiert ${esc(date)}</span>
+        <span>${esc(date)}</span>
       </div>
-      <span class="gh">Repo: <span>${esc(p.repo.replace("https://", ""))}</span></span>
+      <span class="gh">${esc(p.repo.replace("https://", ""))}</span>
     </a>`;
   }
 
   function render(list, target) {
+    const count = $("#count");
+    if (count) count.textContent = `${list.length} Projekt${list.length === 1 ? "" : "e"}`;
     target.innerHTML = list.length
-      ? list.map(card).join("")
+      ? list.map((p, i) => card(p, i)).join("")
       : `<div class="state">Keine Projekte gefunden.</div>`;
   }
 
