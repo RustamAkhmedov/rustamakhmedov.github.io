@@ -37,10 +37,13 @@
 
   const LANG_COLORS = { JavaScript: "#f1e05a", TypeScript: "#3178c6", HTML: "#e34c26", CSS: "#a855f7", Java: "#b07219", Python: "#3572a5", Kotlin: "#a97bff", "C#": "#178600", "C++": "#f34b7d", Go: "#00add8", Rust: "#dea584", Shell: "#89e051" };
 
+  // stabile Farbe pro Projekt aus dem Namen
+  const hue = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+
   function card(p, i = 0) {
     const date = new Date(p.updated).toLocaleDateString("de-DE", { year: "numeric", month: "short", day: "numeric" });
     const color = LANG_COLORS[p.language] || "#8b8bff";
-    return `<a class="card" style="--i:${Math.min(i, 12)}" href="${esc(p.url)}">
+    return `<a class="card" style="--i:${Math.min(i, 12)};--h:${hue(p.name)}" href="${esc(p.url)}">
       <h2>${esc(p.name)} <span class="arrow" aria-hidden="true">↗</span></h2>
       <p>${esc(p.description) || "Keine Beschreibung"}</p>
       <div class="meta">
