@@ -2,8 +2,23 @@
   const USER = "rustamakhmedov";
   const HOST = `${USER}.github.io`;
   const API = `https://api.github.com/users/${USER}/repos?per_page=100&sort=updated`;
-  const CACHE_KEY = "pages-projects-v1";
+  const CACHE_KEY = "pages-projects-v2";
   const CACHE_TTL = 10 * 60 * 1000; // schont das anonyme API-Limit (60/h)
+  const EXCLUDE = new Set(["blog"]); // bewusst ausgeblendet, Pages lässt sich für dieses Repo nicht deaktivieren
+
+  // Private Repos liefert die anonyme GitHub-API nicht mit (kein Token im Client!),
+  // daher hier von Hand nachgetragen. Die Pages-Seite selbst ist trotzdem öffentlich.
+  const EXTRA_PROJECTS = [
+    {
+      name: "nscs",
+      description: "NSCS HTL Stoff zusammengefasst",
+      language: "HTML",
+      stars: 0,
+      updated: "2026-09-12T18:58:00Z",
+      repo: "https://github.com/RustamAkhmedov/nscs",
+      url: "https://rustamakhmedov.github.io/nscs/",
+    },
+  ];
 
   const $ = (sel) => document.querySelector(sel);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -19,7 +34,7 @@
     const repos = await res.json();
 
     const data = repos
-      .filter((r) => r.has_pages && !r.fork && !r.archived && r.name.toLowerCase() !== HOST)
+      .filter((r) => r.has_pages && !r.fork && !r.archived && r.name.toLowerCase() !== HOST && !EXCLUDE.has(r.name.toLowerCase()))
       .map((r) => ({
         name: r.name,
         description: r.description,
@@ -29,7 +44,9 @@
         repo: r.html_url,
         // eigene Domain (falls gesetzt) sonst Standard-Pages-URL
         url: r.homepage && /^https?:\/\//.test(r.homepage) ? r.homepage : `https://${HOST}/${r.name}/`,
-      }));
+      }))
+      .concat(EXTRA_PROJECTS)
+      .sort((a, b) => new Date(b.updated) - new Date(a.updated));
 
     try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), data })); } catch {}
     return data;
