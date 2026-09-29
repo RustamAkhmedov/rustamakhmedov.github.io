@@ -3,7 +3,7 @@
   const HOST = `${USER}.github.io`;
   const API = `https://api.github.com/users/${USER}/repos?per_page=100&sort=updated`;
   const CACHE_KEY = "pages-projects-v2";
-  const CACHE_TTL = 10 * 60 * 1000; // schont das anonyme API-Limit (60/h)
+  const CACHE_TTL = 10 * 60 * 1000;
   const EXCLUDE = new Set(["blog"]); // bewusst ausgeblendet, Pages lässt sich für dieses Repo nicht deaktivieren
 
   // Private Repos liefert die anonyme GitHub-API nicht mit (kein Token im Client!),
@@ -23,15 +23,39 @@
   const $ = (sel) => document.querySelector(sel);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  async function loadProjects() {
+  async function getJson(url, label, opts) {
+    const res = await fetch(url, opts);
+    if (!res.ok) throw new Error(`${label}: ${res.status}`);
+    const json = await res.json();
+    if (!Array.isArray(json)) throw new Error(`${label}: ungültige Daten`);
+    return json;
+  }
+
+  // projects.json wird per GitHub Action erzeugt (kein Rate-Limit für Besucher);
+  // die anonyme API ist nur noch Notlösung, falls die Datei fehlt
+  async function fetchRepos() {
     try {
-      const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+      return await getJson("/projects.json", "projects.json", { cache: "no-cache" });
+    } catch {
+      return await getJson(API, "GitHub API", { headers: { Accept: "application/vnd.github+json" } });
+    }
+  }
+
+  async function loadProjects() {
+    let cached = null;
+    try {
+      cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
       if (cached && Date.now() - cached.t < CACHE_TTL) return cached.data;
     } catch {}
 
-    const res = await fetch(API, { headers: { Accept: "application/vnd.github+json" } });
-    if (!res.ok) throw new Error(`GitHub API: ${res.status}`);
-    const repos = await res.json();
+    let repos;
+    try {
+      repos = await fetchRepos();
+    } catch (e) {
+      // lieber veraltete Daten zeigen als eine Fehlermeldung
+      if (cached?.data) return cached.data;
+      throw e;
+    }
 
     const data = repos
       .filter((r) => r.has_pages && !r.fork && !r.archived && r.name.toLowerCase() !== HOST && !EXCLUDE.has(r.name.toLowerCase()))
