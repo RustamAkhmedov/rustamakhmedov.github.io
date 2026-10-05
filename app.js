@@ -18,6 +18,15 @@
       repo: "https://github.com/RustamAkhmedov/nscs",
       url: "https://rustamakhmedov.github.io/nscs/",
     },
+    {
+      name: "weitland",
+      description: "Ruhiges Pixel-Erkundungsspiel in einer HTML-Datei",
+      language: "JavaScript",
+      stars: 0,
+      updated: "2026-10-05T05:36:28Z",
+      repo: "https://github.com/RustamAkhmedov/weitland",
+      url: "https://rustamakhmedov.github.io/weitland/",
+    },
   ];
 
   const $ = (sel) => document.querySelector(sel);
