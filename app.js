@@ -20,7 +20,7 @@
     },
     {
       name: "weitland",
-      description: "Ruhiges Pixel-Erkundungsspiel in einer HTML-Datei",
+      description: "Ruhiges Pixel-Erkundungsspiel in einer HTML-Datei (komplett gevibecodet)",
       language: "JavaScript",
       stars: 0,
       updated: "2026-10-05T05:36:28Z",
