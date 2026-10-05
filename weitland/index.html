@@ -153,6 +153,20 @@ button.big { font-size: 17px; padding: 11px; }
 .fishRow .fn { color: var(--ink); } .fishRow .fd { color: var(--ink-dim); font-size: 11px; }
 .fishRow.unknown .fn { color: #6f6455; }
 @media (max-width: 520px) { #fishList { grid-template-columns: 1fr; } }
+
+.modes { display: flex; gap: 8px; margin-bottom: 10px; }
+.modeBtn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; opacity: .62; }
+.modeBtn span { font-size: 11px; color: var(--ink-dim); }
+.modeBtn.on { opacity: 1; border-color: var(--gold); background: #4d3822; }
+/* Plattenbau: kühleres Menü */
+body.mode-plattenbau { --gold: #e8c46a; --wood: #4a4f55; --panel: rgba(18, 20, 24, 0.93); }
+body.mode-plattenbau .panel { border-color: #4a4f55; box-shadow: 0 0 0 3px #1c1f23, 0 20px 60px rgba(0,0,0,.6); }
+body.mode-plattenbau button { background: #2a2e33; border-color: #5c636b; }
+body.mode-plattenbau button:hover { background: #363b41; border-color: var(--gold); }
+body.mode-plattenbau .modeBtn.on { background: #3a4047; }
+body.mode-plattenbau h1 { text-shadow: 3px 3px 0 #6b2420; letter-spacing: 6px; }
+
+#actionHint.top { bottom: auto; top: 100px; }
 </style>
 </head>
 <body>
@@ -183,6 +197,10 @@ button.big { font-size: 17px; padding: 11px; }
     <p class="sub">ein ruhiges Land zum Erkunden</p>
 
     <section id="p_main">
+      <div class="modes">
+        <button data-mode="medieval" class="modeBtn"><b>🏰 Mittelalter</b><span>Insel, Burgen, Dörfer, Angeln</span></button>
+        <button data-mode="plattenbau" class="modeBtn"><b>🏢 Plattenbau</b><span>Blocks, Höfe, Wohnungen, Post-Punk</span></button>
+      </div>
       <button id="btnResume" class="big hidden">Zurück ins Spiel</button>
       <button id="btnContinue" class="big hidden">Weiterspielen</button>
       <div class="seedRow">
@@ -454,7 +472,16 @@ const BUCKET = 32;            // Größe der Vegetations-Buckets in Metern
 const NOVEG_RES = 2;          // Auflösung der "hier keine Bäume"-Maske in Metern
 
 const KIND_CONIFER = 0, KIND_DECID = 1, KIND_BUSH = 2, KIND_ROCK = 3,
-  KIND_LAMP = 4, KIND_WELL = 5, KIND_HAY = 6, KIND_BARREL = 7, KIND_BANNER = 8;
+  KIND_LAMP = 4, KIND_WELL = 5, KIND_HAY = 6, KIND_BARREL = 7, KIND_BANNER = 8,
+  // Plattenbau
+  KIND_BIRCH = 9, KIND_CAR = 10, KIND_BENCH = 11, KIND_SWING = 12, KIND_SLIDE = 13, KIND_LAUNDRY = 14,
+  KIND_ANTENNA = 15, KIND_DUMPSTER = 16, KIND_STREETLAMP = 17, KIND_SOFA = 18, KIND_TABLE = 19, KIND_TV = 20,
+  KIND_FRIDGE = 21, KIND_BED = 22, KIND_STOVE = 23, KIND_PLANT = 24, KIND_WARDROBE = 25, KIND_ASHTRAY = 26,
+  KIND_GUITAR = 27, KIND_CAT = 28, KIND_POPLAR = 29;
+const KIND_INDOOR_MIN = 18, KIND_INDOOR_MAX = 27;     // Möbel: werden mit Innenlicht beleuchtet
+// Kollisionsradius je Objektart (0 = man läuft hindurch)
+const KIND_RADIUS = [0.35, 0.35, 0, -1, 0.15, 1.0, 0.6, 0.4, 0,
+  0.3, 1.1, 0.5, 0.7, 0.7, 0, 0, 0.8, 0.15, 0.7, 0.5, 0.35, 0.4, 0.8, 0.4, 0.3, 0.55, 0.25, 0.25, 0, 0.35];
 
 // Bodenarten (für Gras, Schritte, Karte)
 const G_WATER = 0, G_SAND = 1, G_GRASS = 2, G_FOREST = 3, G_ROCK = 4, G_SNOW = 5, G_PATH = 6, G_BUILT = 7, G_FIELD = 8;
@@ -467,8 +494,10 @@ function packRGB(r, g, b) {
 
 const nextTick = () => new Promise(r => setTimeout(r, 0));
 
-async function generateWorld(seedStr, onProgress) {
+async function generateWorld(seedStr, onProgress, mode = 'medieval') {
   const seed = seedFromString(seedStr);
+  const pb = mode === 'plattenbau';
+  const district = pb ? districtTerrain(seed) : null;
   const N = WORLD_N;
   const t0 = performance.now();
 
@@ -488,6 +517,11 @@ async function generateWorld(seedStr, onProgress) {
   // ---------- 1. Höhen ----------
   const H = new Float32Array(N * N);
   for (let y = 0; y < N; y++) {
+    if (pb) {
+      for (let x = 0; x < N; x++) H[y * N + x] = district.height(x, y);
+      if ((y & 31) === 31) { onProgress(0.45 * y / N, 'Forme das Land …'); await nextTick(); }
+      continue;
+    }
     for (let x = 0; x < N; x++) {
       const wx = x + nWarp.fbm(x / 380, y / 380, 3) * 140;
       const wy = y + nWarp.fbm(x / 380 + 40.7, y / 380 - 13.1, 3) * 140;
@@ -546,16 +580,23 @@ async function generateWorld(seedStr, onProgress) {
     if (h < 0) {
       // Grund unter Wasser: Sand, mit der Tiefe dunkler
       const t = clamp(-h / 8, 0, 1);
-      r = lerp(196, 92, t); g = lerp(180, 100, t); b = lerp(130, 78, t);
+      if (pb) { r = lerp(120, 60, t); g = lerp(112, 66, t); b = lerp(88, 56, t); }
+      else { r = lerp(196, 92, t); g = lerp(180, 100, t); b = lerp(130, 78, t); }
       gt = G_WATER;
     } else if (h < 0.7 + patch * 0.8) {
-      r = 212; g = 196; b = 142;                            // Strand / Ufer
+      if (pb) { r = 150; g = 138; b = 108; } else { r = 212; g = 196; b = 142; }   // Strand / Ufer
       gt = G_SAND;
     } else {
       const fo = forestAt(x, y);
       const gtv = clamp(0.5 + patch * 1.3, 0, 1);
-      r = lerp(74, 108, gtv); g = lerp(128, 162, gtv); b = lerp(46, 64, gtv);
-      r = lerp(r, 50, fo * 0.75); g = lerp(g, 90, fo * 0.75); b = lerp(b, 38, fo * 0.75);
+      if (pb) {
+        // Herbst: blasses Olivgrün, im Wald braunes Laub
+        r = lerp(96, 132, gtv); g = lerp(110, 132, gtv); b = lerp(62, 76, gtv);
+        r = lerp(r, 112, fo * 0.7); g = lerp(g, 92, fo * 0.7); b = lerp(b, 56, fo * 0.7);
+      } else {
+        r = lerp(74, 108, gtv); g = lerp(128, 162, gtv); b = lerp(46, 64, gtv);
+        r = lerp(r, 50, fo * 0.75); g = lerp(g, 90, fo * 0.75); b = lerp(b, 38, fo * 0.75);
+      }
       gt = fo > 0.45 ? G_FOREST : G_GRASS;
       const alp = smoothstep(55, 100, h);                   // Bergwiese
       r = lerp(r, 120, alp * 0.6); g = lerp(g, 132, alp * 0.6); b = lerp(b, 80, alp * 0.6);
@@ -602,7 +643,8 @@ async function generateWorld(seedStr, onProgress) {
     rnd: mulberry32(seed ^ 0xB11D),
     recolor, decor: [],
   };
-  const structures = buildStructures(B);
+  B.interact = [];
+  const structures = pb ? buildDistrict(B, district) : buildStructures(B);
 
   // ---------- 4. Detailstufen für weite Entfernungen ----------
   // Bauwerke werden mit "Maximum" statt Mittelwert verkleinert, damit Burgen auch von weitem sichtbar bleiben.
@@ -678,7 +720,11 @@ async function generateWorld(seedStr, onProgress) {
         const treeP = fo * 0.72 + 0.01;
         if (r2 < treeP) {
           const conP = clamp(0.35 + nConifer.fbm(x / 300, y / 300, 2) * 1.6 + smoothstep(30, 80, h) * 0.7, 0, 1);
-          if (r3 < conP) { kind = KIND_CONIFER; size = 10 + r4 * 7; }
+          if (pb) {
+            if (r3 < conP * 0.6) { kind = KIND_CONIFER; size = 11 + r4 * 8; }
+            else if (r3 > 0.93) { kind = KIND_POPLAR; size = 15 + r4 * 6; }
+            else { kind = KIND_BIRCH; size = 10 + r4 * 6; }
+          } else if (r3 < conP) { kind = KIND_CONIFER; size = 10 + r4 * 7; }
           else { kind = KIND_DECID; size = 7 + r4 * 5; }
         } else if (r2 < treeP + 0.035 * (1 - fo * 0.4)) {
           kind = KIND_BUSH; size = 1.0 + r4 * 0.8;
@@ -720,12 +766,14 @@ async function generateWorld(seedStr, onProgress) {
   const seaMask = computeSeaMask(levels[3]);
 
   // ---------- 7. Startpunkt: am Rand eines Dorfes, sonst eine Wiese nahe der Mitte ----------
-  const world = { N, seed, seedStr, mode: 'medieval', levels, veg, bStart, NB, gtype, mat, cells, structures, seaMask, spawn: null };
-  world.spawn = findSpawn(world, forestAt);
+  const world = { N, seed, seedStr, mode, levels, veg, bStart, NB, gtype, mat, cells, structures, seaMask, spawn: null, interact: B.interact };
+  world.spawn = structures.spawn || findSpawn(world, forestAt);
+  world.homeApt = structures.home ? structures.home.apt : -1;
 
   onProgress(1, 'Fertig');
-  console.log(`[Weitland] Welt ${seedStr} in ${(performance.now() - t0).toFixed(0)} ms, ${count} Objekte, ` +
-    `${structures.villages.length} Dörfer, ${structures.castles.length} Burgen, ${structures.bridges} Brücken, ${cells.size} Bauzellen`);
+  console.log(`[Weitland] ${mode} ${seedStr} in ${(performance.now() - t0).toFixed(0)} ms, ${count} Objekte, ` +
+    (pb ? `${structures.blocks} Blocks, ${structures.flats} Wohnungen, ` : `${structures.villages.length} Dörfer, ${structures.castles.length} Burgen, `) +
+    `${structures.bridges} Brücken, ${cells.size} Bauzellen`);
   return world;
 }
 
@@ -774,9 +822,14 @@ function standHeight(world, x, y, feet) {
   const k = (y | 0) * N + (x | 0);
   const g = groundHeight(world, x, y);
   if (world.mat[k] & M_SPAN) {
-    const s = world.cells.get(k);
-    if (feet >= s.spanTop - 0.7) return { h: s.spanTop, ceil: Infinity, onSpan: true };
-    return { h: g, ceil: s.spanBot };
+    // Höchste Fläche unter (oder knapp über) den Füßen ist der Boden, die nächste darüber die Decke
+    const sp = world.cells.get(k).spans;
+    let h = g, ceil = Infinity, on = false;
+    for (let q = 0; q < sp.length; q += 2) {
+      if (sp[q + 1] <= feet + 0.7) { if (sp[q + 1] > h) { h = sp[q + 1]; on = true; } }
+    }
+    for (let q = 0; q < sp.length; q += 2) if (sp[q] > h + 0.05 && sp[q] < ceil) ceil = sp[q];
+    return { h, ceil, onSpan: on };
   }
   return { h: g, ceil: Infinity };
 }
@@ -789,7 +842,7 @@ function surfaceAt(world, x, y, feet) {
   const H = world.levels[0].h;
   if (world.mat[k]) {
     const s = world.cells.get(k);
-    if (s && (!(world.mat[k] & M_SPAN) || feet >= s.spanTop - 0.7)) return s.wm === SM_STONE ? 'stone' : 'wood';
+    if (s && (!(world.mat[k] & M_SPAN) || standHeight(world, x, y, feet).onSpan)) return s.step || (s.wm === SM_STONE ? 'stone' : 'wood');
   }
   if (H[k] < SEA_LEVEL) return 'water';
   switch (world.gtype[k]) {
@@ -802,7 +855,7 @@ function surfaceAt(world, x, y, feet) {
 }
 
 // Prüft, ob an (x, y) ein Baumstamm, Felsen oder Deko-Objekt im Weg ist
-function vegetationBlocks(world, x, y, radius) {
+function vegetationBlocks(world, x, y, radius, feet) {
   const v = world.veg, NB = world.NB;
   const bx = (x / BUCKET) | 0, by = (y / BUCKET) | 0;
   for (let yy = by - 1; yy <= by + 1; yy++) {
@@ -812,8 +865,10 @@ function vegetationBlocks(world, x, y, radius) {
       const b = yy * NB + xx;
       for (let i = world.bStart[b]; i < world.bStart[b + 1]; i++) {
         const k = v.kind[i];
-        if (k === KIND_BUSH || k === KIND_BANNER) continue;
-        const r = (k === KIND_ROCK ? v.h[i] * 0.55 : k === KIND_WELL ? 1.0 : k === KIND_HAY ? 0.6 : k === KIND_BARREL ? 0.4 : k === KIND_LAMP ? 0.15 : 0.35) + radius;
+        const kr = KIND_RADIUS[k];
+        if (kr === 0) continue;
+        if (feet !== undefined && (v.z[i] > feet + 1.5 || v.z[i] + v.h[i] < feet + 0.2)) continue;   // anderes Stockwerk
+        const r = (kr < 0 ? v.h[i] * 0.55 : kr) + radius;
         const dx = v.x[i] - x, dy = v.y[i] - y;
         if (dx * dx + dy * dy < r * r) return true;
       }
@@ -830,9 +885,10 @@ function collectLights(world, x, y, radius, max) {
   for (let by = b0y; by <= b1y; by++) for (let bx = b0x; bx <= b1x; bx++) {
     const b = by * NB + bx;
     for (let i = world.bStart[b]; i < world.bStart[b + 1]; i++) {
-      if (v.kind[i] !== KIND_LAMP) continue;
+      const k = v.kind[i];
+      if (k !== KIND_LAMP && k !== KIND_STREETLAMP) continue;
       const d = Math.hypot(v.x[i] - x, v.y[i] - y);
-      if (d < radius) out.push([v.x[i], v.y[i], v.z[i] + v.h[i] * 0.85, d]);
+      if (d < radius) out.push([v.x[i], v.y[i], v.z[i] + v.h[i] * (k === KIND_STREETLAMP ? 0.92 : 0.85), d]);
     }
   }
   out.sort((a, b) => a[3] - b[3]);
@@ -876,7 +932,9 @@ const NAME_A = ['Eichen', 'Birken', 'Linden', 'Mühl', 'Fuchs', 'Kranich', 'Hase
 const NAME_B = ['au', 'bach', 'feld', 'dorf', 'hain', 'tal', 'heim', 'brunn', 'wald', 'furt', 'wiese', 'hausen', 'rode', 'winkel', 'grund'];
 const CASTLE_B = ['stein', 'fels', 'burg', 'eck', 'horst', 'wacht', 'turm', 'berg'];
 
-function buildStructures(B) {
+// Werkzeugkasten zum Bauen: Gelände einebnen, malen, Zellen setzen, Häuser, Türme, Burgen, Brücken, Wege.
+// Wird vom Mittelalter- und vom Plattenbau-Generator benutzt.
+function makeBuilder(B) {
   const { N, H, C, NX, NY, NZ, gtype, mat, cells, noVeg, rnd } = B;
   const out = { villages: [], castles: [], ruins: [], towers: [], piers: [], bridges: 0, bridgeList: [], labels: [] };
   const pick = a => a[(rnd() * a.length) | 0];
@@ -960,7 +1018,7 @@ function buildStructures(B) {
   function setSpan(x, y, top, bot, info, topCol) {
     if (!inMap(x, y)) return;
     const i = y * N + x;
-    info.spanTop = top; info.spanBot = bot;
+    info.spanTop = top; info.spanBot = bot; info.spans = [bot, top];
     mat[i] = M_STRUCT | M_SPAN; cells.set(i, info);
     C[i] = topCol;
     NX[i] = 0; NY[i] = 0; NZ[i] = 127;
@@ -1433,6 +1491,15 @@ function buildStructures(B) {
     }
   }
 
+  return { out, pick, makeName, inMap, hAt, stats, markNoVeg, markNoVegCircle, flatten, paint, setCell, setSpan,
+    varyCol, P, decor, rectFree, stampHouse, stampTower, buildCastle, buildRuin, buildWatchtower, buildVillage,
+    buildBridge, buildPier, drawPath, waterRuns };
+}
+
+function buildStructures(B) {
+  const { N, H, mat, rnd } = B;
+  const { out, stats, buildCastle, buildVillage, buildRuin, buildWatchtower, waterRuns, drawPath, buildPier } = makeBuilder(B);
+
   // ======================= Standorte wählen und bauen =======================
   const placed = [];
   const farFrom = (x, y, d) => placed.every(p => Math.hypot(p.x - x, p.y - y) > d + p.r);
@@ -1519,6 +1586,533 @@ function buildStructures(B) {
 
   // Stege an Dörfern in Wassernähe
   for (const v of out.villages) buildPier(v);
+
+  return out;
+}
+</script>
+<script>
+'use strict';
+/* Plattenbau-Viertel ("Микрорайон"): Fünf- und Neunstöcker mit begehbaren Treppenhäusern und Wohnungen,
+   Höfe mit Spielplätzen, Garagen und Wäscheleinen, ein Park mit Teich, eine Schule, Datschen-Gärten,
+   Birkenwälder und ein Fluss mit Brücke.
+
+   Ein Wohnblock besteht aus Abschnitten (Podjezde) zu 17 × 11 Zellen:
+     u = entlang des Hauses, v = von vorne (Eingang, v = 0) nach hinten (Balkone, v = 10..12)
+     su 1..5  linke Wohnung · su 6 Wand · su 7..10 Treppenhaus · su 11 Wand · su 12..16 rechte Wohnung
+     Treppenhaus: Podest vorne (v = 1, gerade Stockwerke), Podest hinten (v = 8, ungerade Stockwerke),
+     dazwischen zwei Treppenläufe à 6 Stufen von 0,5 m: Spur A (su 7–8) aufwärts nach hinten, Spur B (su 9–10) zurück.
+   Jede Zelle bekommt eine Liste fester Höhenbereiche (Böden, Wände, Brüstungen, Stufen), aus der das
+   Bodenstück und die schwebenden Abschnitte werden. */
+
+const FLOOR_H = 3.0, SLAB = 0.25;
+const SEC_LEN = 17;
+
+function districtTerrain(seed) {
+  const n1 = new Noise2D(seed + 11), n2 = new Noise2D(seed + 12), n3 = new Noise2D(seed + 13);
+  const C = WORLD_N / 2;
+  const riverY = x => C + 440 + Math.sin(x / 230) * 40 + n3.fbm(x / 500, 3.3, 2) * 70;
+  return {
+    riverY,
+    height(x, y) {
+      const dx = (x - C) / C, dy = (y - C) / C, d = Math.sqrt(dx * dx + dy * dy);
+      let h = 7 + n1.fbm(x / 500, y / 500, 3) * 3;
+      h += smoothstep(0.5, 0.85, d) * (n2.fbm(x / 260, y / 260, 4) * 22 + 10);
+      // Kern (Wohngebiet und Gärten) fast flach
+      const core = 1 - smoothstep(0.5, 0.66, Math.max(Math.abs(dx) * 1.0, Math.abs(dy) * 1.05));
+      h = lerp(h, 7 + n1.fbm(x / 900, y / 900, 2) * 1.2, core);
+      // Fluss im Süden
+      const rd = Math.abs(y - riverY(x));
+      h = lerp(h, Math.min(h, 3.2), 1 - smoothstep(10, 34, rd));
+      h = lerp(h, -2.2, 1 - smoothstep(6, 12, rd));
+      // Meer am Kartenrand
+      h -= smoothstep(0.86, 1.0, d) * 45;
+      return h;
+    },
+  };
+}
+
+function buildDistrict(B, T) {
+  const K = makeBuilder(B);
+  const { out, inMap, hAt, stats, markNoVeg, markNoVegCircle, flatten, paint, decor, P, varyCol, stampHouse } = K;
+  const { N, H, C, NX, NY, NZ, gtype, mat, cells, rnd } = B;
+  out.blocks = 0; out.flats = 0;
+  const CX = N / 2, CY = N / 2;
+
+  // ---------------------------------------------------------------- Bauzelle mit mehreren Höhenbereichen
+  function setBuilt(x, y, list, info, topCol) {
+    if (!inMap(x, y)) return;
+    const i = y * N + x;
+    const pairs = [];
+    for (let q = 0; q < list.length; q += 2) if (list[q + 1] > list[q] + 0.001) pairs.push([list[q], list[q + 1]]);
+    pairs.sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    for (const p of pairs) {
+      const m = merged[merged.length - 1];
+      if (m && p[0] <= m[1] + 0.02) m[1] = Math.max(m[1], p[1]); else merged.push(p.slice());
+    }
+    let ground = info.base;
+    if (merged.length && merged[0][0] <= info.base + 0.02) ground = merged.shift()[1];
+    const spans = [];
+    for (const [a, b] of merged) spans.push(a, b);
+    H[i] = ground; C[i] = topCol; gtype[i] = G_BUILT;
+    NX[i] = 0; NY[i] = 0; NZ[i] = 127;
+    info.spans = spans;
+    info.spanTop = spans.length ? spans[spans.length - 1] : ground;
+    info.spanBot = spans.length ? spans[0] : ground;
+    info.gs = true;            // auch das Bodenstück ist Gebäude (Boden, Wandsockel)
+    mat[i] = M_STRUCT | (spans.length ? M_SPAN : 0);
+    cells.set(i, info);
+  }
+
+  const paintCol = (x, y, col, gt, jit = 10) => {
+    if (!inMap(x, y)) return;
+    const i = y * N + x;
+    if (mat[i]) return;
+    const j = (hash2i(x, y, 41) - 0.5) * jit;
+    C[i] = packRGB(col[0] + j, col[1] + j, col[2] + j);
+    gtype[i] = gt;
+  };
+
+  // ---------------------------------------------------------------- Wohnblock
+  const FACADES = [[176, 170, 158], [168, 166, 160], [184, 172, 150], [160, 164, 166], [190, 182, 166], [150, 156, 150]];
+  let blockId = 0;
+  function buildBlock(o) {
+    const n = o.nF, L = o.nSec * SEC_LEN + 1;
+    const bid = ++blockId;
+    const at = (u, v) => [o.ox + u * o.ua[0] + v * o.va[0], o.oy + u * o.ua[1] + v * o.va[1]];
+    // stetige Position: Zelle (u, v) umfasst uc ∈ [u, u+1), vc ∈ [v, v+1), egal in welche Richtung das Haus zeigt
+    const atc = (uc, vc) => [o.ox + uc * o.ua[0] + vc * o.va[0] + (o.ua[0] < 0 ? 1 : 0) + (o.va[0] < 0 ? 1 : 0),
+      o.oy + uc * o.ua[1] + vc * o.va[1] + (o.ua[1] < 0 ? 1 : 0) + (o.va[1] < 0 ? 1 : 0)];
+    // Grundfläche (inkl. Balkone und Vorgarten) einebnen
+    const cs = [at(-2, -6), at(L + 1, -6), at(-2, 13), at(L + 1, 13)];
+    const bx0 = Math.min(...cs.map(c => c[0])), bx1 = Math.max(...cs.map(c => c[0]));
+    const by0 = Math.min(...cs.map(c => c[1])), by1 = Math.max(...cs.map(c => c[1]));
+    const st = stats((bx0 + bx1) / 2, (by0 + by1) / 2, Math.max(bx1 - bx0, by1 - by0) / 2, 4);
+    const base = Math.round(st.mean * 2) / 2;
+    flatten(bx0, by0, bx1, by1, base, 6);
+    markNoVeg(bx0 - 1, by0 - 1, bx1 + 1, by1 + 1);
+    const F = k => base + k * FLOOR_H;
+    const facade = P(o.facade || FACADES[bid % FACADES.length]);
+    const roofCol = P([66, 64, 62]);
+    const outN = [-o.va[0], -o.va[1]], backN = [o.va[0], o.va[1]];
+    const finalA = (n - 1) % 2 === 0;           // letzter Treppenlauf in Spur A?
+    const stairPaint = hash2i(bid, 7, 3) < 0.5 ? 0 : 1;   // grün oder blau gestrichenes Treppenhaus
+
+    const windows = () => {
+      const r = [base, F(0) + 0.9];
+      for (let k = 0; k < n; k++) r.push(F(k) + 2.2, k + 1 < n ? F(k + 1) + 0.9 : F(n) + 0.9);
+      return r;
+    };
+    const entrance = () => {
+      const r = [];
+      for (let k = 0; k < n; k++) r.push(F(k) + (k === 0 ? 2.35 : 2.2), k + 1 < n ? F(k + 1) + 0.9 : F(n) + 0.9);
+      return r;
+    };
+    const balcDoor = () => {
+      const r = [base, F(0) + 0.9];
+      for (let k = 0; k < n; k++) r.push(F(k) + 2.2, k + 1 < n ? F(k + 1) : F(n) + 0.9);
+      return r;
+    };
+    const doorWall = doorAt => {
+      const r = [];
+      for (let k = 0; k < n; k++) r.push(doorAt(k) ? F(k) + 2.1 : F(k), F(k + 1));
+      return r;
+    };
+    const slabs = (from, to, filter) => {
+      const r = [];
+      for (let k = Math.max(1, from); k <= to; k++) if (!filter || filter(k)) r.push(F(k) - SLAB, F(k));
+      return r;
+    };
+
+    for (let u = 0; u < L; u++) for (let v = 0; v <= 10; v++) {
+      const s = Math.min(o.nSec - 1, Math.floor(u / SEC_LEN)), su = u - s * SEC_LEN;
+      const aptL = bid * 100 + s * 2 + 1, aptR = aptL + 1, stairId = bid * 100 + 60 + s;
+      const isEnd = u === 0 || u === L - 1;
+      const [x, y] = at(u, v);
+      const info = { d: 1, base, nF: n, bid, apt: su <= 6 ? aptL : su >= 11 ? aptR : stairId, part: 'room',
+        wnx: 0, wny: 0, texA: 'apt', texB: 'apt', wcol: facade, win: false, mural: false, carpet: false,
+        su, paint: stairPaint, floor: v <= 4 ? 0 : 1 };
+      let iv;
+      if (v === 0 || v === 10 || isEnd) {
+        info.part = 'ext'; info.texA = 'facade';
+        const nrm = isEnd ? (u === 0 ? [-o.ua[0], -o.ua[1]] : [o.ua[0], o.ua[1]]) : v === 0 ? outN : backN;
+        info.wnx = nrm[0]; info.wny = nrm[1];
+        info.texB = !isEnd && su >= 7 && su <= 10 ? 'stair' : 'apt';
+        if (isEnd) { info.mural = true; iv = [base, F(n) + 0.9]; }
+        else if (su === 0) iv = [base, F(n) + 0.9];
+        else if (v === 0 && (su === 8 || su === 9)) { info.win = true; iv = entrance(); }
+        else if (v === 10 && o.balc && (su === 3 || su === 14)) { info.win = true; iv = balcDoor(); }
+        else if (su === 2 || su === 4 || su === 13 || su === 15 || (v === 0 && (su === 7 || su === 10))) { info.win = true; iv = windows(); }
+        else iv = [base, F(n) + 0.9];
+      } else if (su === 0) {
+        info.part = 'int'; info.wnx = o.ua[0]; info.wny = o.ua[1];
+        iv = [base, F(n)];
+      } else if ((su === 6 || su === 11) && v <= 9) {
+        info.part = 'int';
+        const toStair = su === 6 ? 1 : -1;
+        info.wnx = o.ua[0] * toStair; info.wny = o.ua[1] * toStair;
+        info.texA = 'stair'; info.texB = 'apt';
+        iv = doorWall(k => (v === 1 && k % 2 === 0) || (v === 8 && k % 2 === 1));
+      } else if (su >= 7 && su <= 10 && v === 9) {
+        info.part = 'int'; info.wnx = -o.va[0]; info.wny = -o.va[1]; info.texA = 'stair'; info.texB = 'stair'; info.apt = stairId;
+        iv = [base, F(n)];
+      } else if (su >= 7 && su <= 10) {
+        info.part = 'stair'; info.apt = stairId; info.texA = 'stair'; info.texB = 'stair';
+        info.wnx = o.va[0]; info.wny = o.va[1];
+        if (v === 1) iv = slabs(2, n, k => k % 2 === 0).concat(n % 2 === 1 ? [F(n) - SLAB, F(n)] : []);
+        else if (v === 8) iv = slabs(1, n, k => k % 2 === 1).concat(n % 2 === 0 ? [F(n) - SLAB, F(n)] : []);
+        else {
+          const laneA = su <= 8;
+          iv = [];
+          for (let k = laneA ? 0 : 1; k < n; k += 2) {
+            const top = laneA ? F(k) + 0.5 * (v - 1) : F(k) + 0.5 * (8 - v);
+            iv.push(top - 0.3, top);
+          }
+          if (laneA !== finalA) iv.push(F(n) - SLAB, F(n));
+          info.step = 'stone';
+        }
+      } else if (v === 5) {
+        info.part = 'int'; info.wnx = o.va[0]; info.wny = o.va[1];
+        iv = doorWall(() => su === 3 || su === 14);
+        // Teppich an der Wand im Wohnzimmer (bei manchen Wohnungen)
+        if ((su === 1 || su === 2 || su === 15 || su === 16) && hash2i(info.apt, 9, 2) < 0.55) info.carpet = true;
+      } else {
+        info.part = 'room';
+        iv = slabs(1, n);
+        info.step = 'wood';
+      }
+      setBuilt(x, y, iv, info, roofCol);
+    }
+
+    // ---- Balkone hinten (ab dem 1. Stock) ----
+    if (o.balc) {
+      for (const side of [0, 1]) for (let s = 0; s < o.nSec; s++) {
+        const su0 = side === 0 ? 1 : 12;
+        for (let du = 0; du <= 4; du++) for (const v of [11, 12]) {
+          const u = s * SEC_LEN + su0 + du;
+          const [x, y] = at(u, v);
+          const rail = v === 12 || du === 0 || du === 4;
+          const info = { d: 1, base, nF: n, bid, apt: bid * 100 + s * 2 + 1 + side, part: rail ? 'rail' : 'balc',
+            wnx: rail && v === 12 ? backN[0] : du === 0 ? -o.ua[0] : du === 4 ? o.ua[0] : 0,
+            wny: rail && v === 12 ? backN[1] : du === 0 ? -o.ua[1] : du === 4 ? o.ua[1] : 0,
+            texA: 'facade', texB: 'facade', wcol: facade, step: 'stone', balcCol: (hash2i(bid, s * 2 + side, 4) * 4) | 0 };
+          const iv = [];
+          for (let k = 1; k < n; k++) iv.push(F(k) - 0.2, F(k) + (rail ? 1.05 : 0));
+          setBuilt(x, y, iv, info, rail ? facade : P([120, 118, 112]));
+        }
+      }
+    }
+
+    // ---- Vorne: Vordach, Lampe, Bank, Vorgarten ----
+    for (let s = 0; s < o.nSec; s++) {
+      const su = s * SEC_LEN;
+      for (let du = 7; du <= 10; du++) {
+        const [x, y] = at(su + du, -1);
+        setBuilt(x, y, [F(0) + 2.45, F(0) + 2.7], { d: 1, base, nF: n, bid, apt: 0, part: 'canopy', wnx: outN[0], wny: outN[1], texA: 'facade', texB: 'facade', wcol: facade }, facade);
+      }
+      for (let du = 7; du <= 10; du++) for (const v of [-1, -2, -3]) { const [x, y] = at(su + du, v); paintCol(x, y, [96, 96, 98], G_PATH, 8); }
+      const [lx, ly] = atc(su + 10.6, -0.7); decor(lx, ly, KIND_LAMP, 2.6);
+      const [bx, by] = atc(su + 5.6, -1.6); decor(bx, by, KIND_BENCH, 0.9, (hash2i(bid, s, 1) * 4) | 0);
+      if (hash2i(bid, s, 2) < 0.45) { const [cx, cy] = atc(su + 5.6, -1.6); decor(cx, cy, KIND_CAT, 0.32, (hash2i(bid, s, 3) * 4) | 0, base + 0.55); }
+      for (const g0 of [1, 12]) {
+        // Vorgarten mit Blumen und niedrigem Zaun
+        for (let du = 0; du < 5; du++) for (let v = -2; v >= -4; v--) {
+          const [x, y] = at(su + g0 + du, v);
+          paintCol(x, y, v === -3 ? [88, 70, 50] : [92, 108, 62], G_GRASS, 12);
+          if (v === -3 && hash2i(x, y, 5) < 0.6) decor(x + 0.5, y + 0.5, KIND_BUSH, 0.7 + hash2i(x, y, 6) * 0.4, (hash2i(x, y, 7) * 4) | 0);
+        }
+        for (let du = 0; du < 5; du++) {
+          const [x, y] = at(su + g0 + du, -5);
+          setBuilt(x, y, [base, base + 0.6], { d: 1, base, nF: n, bid, apt: 0, part: 'fence', wnx: outN[0], wny: outN[1], texA: 'facade', texB: 'facade', wcol: P([70, 112, 84]) }, P([70, 112, 84]));
+        }
+      }
+    }
+    // ---- Dach: Antennen ----
+    const nAnt = 2 + ((rnd() * 3) | 0);
+    for (let a = 0; a < nAnt; a++) {
+      const [x, y] = atc(2 + rnd() * (L - 4), 2 + rnd() * 7);
+      decor(x, y, KIND_ANTENNA, 2.2 + rnd() * 1.2, (rnd() * 4) | 0, F(n));
+    }
+
+    // ---- Möbel in den Wohnungen ----
+    const furnish = (s, side, k, home) => {
+      const su0 = s * SEC_LEN, mir = du => side === 0 ? du : 18 - du;   // rechte Wohnung gespiegelt
+      const put = (du, v, kind, h, variant) => { const [x, y] = atc(su0 + mir(du), v); decor(x, y, kind, h, variant, F(k)); };
+      const apt = bid * 100 + s * 2 + 1 + side;
+      const r1 = hash2i(apt, k, 11), r2 = hash2i(apt, k, 12);
+      // Wohnzimmer vorne
+      if (home || r1 < 0.85) {
+        put(2.0, 4.4, KIND_SOFA, 0.9, (r1 * 40) & 3);
+        put(1.4, 2.8, KIND_TV, 1.0, 0);
+        if (r1 < 0.6 || home) put(4.6, 3.0, KIND_TABLE, 0.8, (r2 * 40) & 3);
+        put(1.4, 1.45, r1 < 0.4 ? KIND_WARDROBE : KIND_PLANT, r1 < 0.4 ? 1.9 : 1.0, (r2 * 20) & 3);
+      }
+      // hinten: Küche oder Schlafzimmer
+      if (home || r2 < 0.85) {
+        if (r2 < 0.5) {
+          put(1.4, 9.5, KIND_STOVE, 0.9, 0); put(1.4, 6.5, KIND_FRIDGE, 1.6, 0); put(4.4, 7.4, KIND_TABLE, 0.8, (r1 * 30) & 3);
+        } else {
+          put(2.0, 9.0, KIND_BED, 0.65, (r1 * 30) & 3); put(1.4, 6.5, KIND_WARDROBE, 1.9, (r2 * 30) & 3); put(4.9, 6.5, KIND_PLANT, 1.0, 0);
+        }
+      }
+      if (o.balc && k >= 1 && (home || hash2i(apt, k, 13) < 0.3)) {
+        const [ax, ay] = atc(su0 + mir(4.5), 11.55);
+        decor(ax, ay, KIND_ASHTRAY, 0.55, 0, F(k));
+        B.interact.push({ kind: 'smoke', x: ax, y: ay, z: F(k), home: !!home });
+      }
+      if (home) {
+        const [gx, gy] = atc(su0 + mir(3.5), 1.35);
+        decor(gx, gy, KIND_GUITAR, 1.05, 0, F(k));
+        B.interact.push({ kind: 'guitar', x: gx, y: gy, z: F(k), home: true });
+      }
+      out.flats++;
+    };
+    for (let s = 0; s < o.nSec; s++) for (let side = 0; side < 2; side++) for (let k = 0; k < n; k++) {
+      const home = o.home && o.home.s === s && o.home.side === side && o.home.k === k;
+      furnish(s, side, k, home);
+      if (home) {
+        const [x, y] = atc(s * SEC_LEN + (side === 0 ? 3.5 : 14.5), 2.9);
+        const [tx, ty] = atc(s * SEC_LEN + (side === 0 ? 3.5 : 14.5), 1.35);
+        out.spawn = { x, y, feet: F(k), yaw: Math.atan2(ty - y, tx - x) };
+        out.home = { x, y, z: F(k), floor: k + 1, apt: bid * 100 + s * 2 + 1 + side };
+      }
+    }
+    out.blocks++;
+    return { bid, base, L, at, F };
+  }
+
+  // ---------------------------------------------------------------- Garagenreihe
+  function garages(x0, y0, count, alongY, doorDir) {
+    const base = stats(x0 + (alongY ? 3 : count * 1.5), y0 + (alongY ? count * 1.5 : 3), count * 1.6 + 4, 3).mean;
+    flatten(x0 - 1, y0 - 1, x0 + (alongY ? 6 : count * 3) + 1, y0 + (alongY ? count * 3 : 6) + 1, base, 4);
+    for (let g = 0; g < count; g++) {
+      const col = [[96, 112, 86], [120, 104, 82], [104, 104, 108], [132, 92, 70], [86, 100, 118]][(hash2i(g, x0, y0) * 5) | 0];
+      for (let a = 0; a < 3; a++) for (let b = 0; b < 6; b++) {
+        const x = alongY ? x0 + b : x0 + g * 3 + a, y = alongY ? y0 + g * 3 + a : y0 + b;
+        const front = (doorDir > 0 ? b === 5 : b === 0);
+        const nrm = alongY ? [doorDir, 0] : [0, doorDir];
+        setBuilt(x, y, [base, base + 2.5], { d: 1, base, nF: 1, bid: 999, apt: 0, part: 'garage', door: front && a === 1,
+          wnx: front ? nrm[0] : (alongY ? 0 : (a === 0 ? -1 : a === 2 ? 1 : 0)), wny: front ? nrm[1] : (alongY ? (a === 0 ? -1 : a === 2 ? 1 : 0) : 0),
+          texA: 'facade', texB: 'facade', wcol: P(col), su: g }, P([78, 76, 74]));
+      }
+    }
+    markNoVeg(x0 - 2, y0 - 2, x0 + (alongY ? 7 : count * 3 + 1), y0 + (alongY ? count * 3 + 1 : 7));
+  }
+
+  // ---------------------------------------------------------------- Kiosk
+  function kiosk(x0, y0, dir) {
+    const base = hAt(x0 + 1.5, y0 + 1.5);
+    for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++)
+      setBuilt(x0 + a, y0 + b, [base, base + 2.6], { d: 1, base, nF: 1, bid: 998, apt: 0, part: 'kiosk', win: b === (dir > 0 ? 2 : 0),
+        wnx: 0, wny: b === 2 ? 1 : b === 0 ? -1 : 0, texA: 'facade', texB: 'facade', wcol: P([196, 184, 120]) }, P([170, 60, 50]));
+    markNoVeg(x0 - 1, y0 - 1, x0 + 4, y0 + 4);
+  }
+
+  // ---------------------------------------------------------------- Straßen
+  const KX0 = CX - 525, KY0 = CY - 440, KW = 175, KH = 170, NKX = 6, NKY = 4;
+  const ASPH = [66, 66, 68], WALK = [116, 112, 106];
+  function road(x0, y0, x1, y1, w) {
+    const vertical = x0 === x1, len = vertical ? Math.abs(y1 - y0) : Math.abs(x1 - x0);
+    for (let t = 0; t <= len; t++) for (let o = -w - 3; o <= w + 3; o++) {
+      const x = vertical ? x0 + o : Math.min(x0, x1) + t, y = vertical ? Math.min(y0, y1) + t : y0 + o;
+      if (!inMap(x, y) || mat[y * N + x] || H[y * N + x] < 0.3) continue;
+      const a = Math.abs(o);
+      if (a <= w) {
+        const crack = hash2i(x >> 1, y >> 1, 77) > 0.94 ? 0.82 : 1;
+        const dash = a === 0 && ((vertical ? y : x) % 10 < 4) && hash2i(x, y, 3) > 0.25;
+        paintCol(x, y, dash ? [170, 166, 150] : ASPH.map(c => c * crack), G_PATH, 6);
+      } else paintCol(x, y, WALK, G_PATH, 10);
+    }
+    if (vertical) markNoVeg(x0 - w - 4, Math.min(y0, y1), x0 + w + 4, Math.max(y0, y1));
+    else markNoVeg(Math.min(x0, x1), y0 - w - 4, Math.max(x0, x1), y0 + w + 4);
+    // Straßenlaternen auf dem Gehweg
+    for (let t = 12; t < len; t += 34) {
+      const side = (t / 34 | 0) % 2 ? 1 : -1;
+      const x = vertical ? x0 + side * (w + 2) : Math.min(x0, x1) + t, y = vertical ? Math.min(y0, y1) + t : y0 + side * (w + 2);
+      if (inMap(x, y) && !mat[(y | 0) * N + (x | 0)] && H[(y | 0) * N + (x | 0)] > 0.3) decor(x + 0.5, y + 0.5, KIND_STREETLAMP, 7.5, 0);
+    }
+  }
+
+  // ---------------------------------------------------------------- Viertel planen
+  const types = [];
+  for (let ky = 0; ky < NKY; ky++) for (let kx = 0; kx < NKX; kx++) {
+    let t = rnd() < 0.45 ? 'pair5' : rnd() < 0.45 ? 'nine' : 'towers';
+    types.push(t);
+  }
+  const T_ = (kx, ky, t) => { types[ky * NKX + kx] = t; };
+  T_(2, 1, 'home'); T_(3, 2, 'park'); T_(0, 3, 'garages'); T_(4, 0, 'school'); T_(5, 3, 'garages');
+
+  // Erst Gebäude (damit Straßen sie nicht überschreiben), dann Straßen
+  let yard = 0;
+  for (let ky = 0; ky < NKY; ky++) for (let kx = 0; kx < NKX; kx++) {
+    const t = types[ky * NKX + kx];
+    const qx0 = KX0 + kx * KW + 10, qx1 = KX0 + (kx + 1) * KW - 10, qy0 = KY0 + ky * KH + 10, qy1 = KY0 + (ky + 1) * KH - 10;
+    const cx = Math.round((qx0 + qx1) / 2), cy = Math.round((qy0 + qy1) / 2);
+    yard++;
+    if (t === 'home' || t === 'pair5' || t === 'nine') {
+      const nA = t === 'nine' ? 4 : 3 + (rnd() < 0.5 ? 1 : 0), nB = 3 + (rnd() < 0.4 ? 1 : 0);
+      const LA = nA * SEC_LEN + 1, LB = nB * SEC_LEN + 1;
+      const A = buildBlock({ ox: cx - (LA >> 1), oy: qy0 + 14, ua: [1, 0], va: [0, -1], nSec: nA, nF: t === 'nine' ? 9 : 5, balc: true,
+        home: t === 'home' ? { s: 1, side: 0, k: 3 } : null });
+      buildBlock({ ox: cx - (LB >> 1), oy: qy1 - 14, ua: [1, 0], va: [0, 1], nSec: nB, nF: 5, balc: true });
+      courtyard(qx0, qx1, qy0 + 20, qy1 - 20, cx, cy, t === 'home');
+      const name = t === 'home' ? 'Двор (dein Hof)' : `Двор №${yard}`;
+      out.villages.push({ name, x: cx, y: cy, r: 50 });
+      out.labels.push({ name: t === 'home' ? 'Dein Block' : `Двор №${yard}`, x: cx, y: cy, kind: 'village' });
+      if (t === 'home') out.labels.push({ name: 'Deine Wohnung (4. Stock)', x: A.at(SEC_LEN + 3, 5)[0], y: A.at(SEC_LEN + 3, 5)[1], kind: 'tower' });
+    } else if (t === 'towers') {
+      buildBlock({ ox: qx0 + 22, oy: qy0 + 14, ua: [1, 0], va: [0, -1], nSec: 1, nF: 12, balc: true });
+      buildBlock({ ox: qx1 - 40, oy: qy1 - 14, ua: [1, 0], va: [0, 1], nSec: 1, nF: 12, balc: true });
+      courtyard(qx0, qx1, qy0 + 20, qy1 - 20, cx, cy, false);
+      out.villages.push({ name: `Двор №${yard}`, x: cx, y: cy, r: 50 });
+      out.labels.push({ name: 'Hochhäuser', x: cx, y: cy, kind: 'village' });
+    } else if (t === 'school') {
+      buildBlock({ ox: cx - 34, oy: qy0 + 14, ua: [1, 0], va: [0, -1], nSec: 4, nF: 3, balc: false, facade: [196, 176, 150] });
+      for (let y = cy - 18; y <= qy1 - 8; y++) for (let x = cx - 40; x <= cx + 40; x++) {
+        const line = Math.abs(x - cx) === 40 || y === cy - 18 || y === qy1 - 8 || (y === Math.round((cy - 18 + qy1 - 8) / 2));
+        paintCol(x, y, line ? [200, 196, 186] : [150, 96, 72], G_PATH, 8);
+      }
+      markNoVeg(cx - 42, cy - 20, cx + 42, qy1 - 6);
+      const name = `Школа №${17 + ((rnd() * 60) | 0)}`;
+      out.villages.push({ name, x: cx, y: cy, r: 60 });
+      out.labels.push({ name, x: cx, y: cy - 30, kind: 'castle' });
+    } else if (t === 'park') {
+      // Teich mit Ufer, Wege, Bänke, viele Birken
+      const r = 26;
+      for (let y = cy - r - 8; y <= cy + r + 8; y++) for (let x = cx - r - 8; x <= cx + r + 8; x++) {
+        const d = Math.hypot(x - cx, (y - cy) * 1.3);
+        if (d < r + 8) H[y * N + x] = lerp(H[y * N + x], -1.9, 1 - smoothstep(r - 6, r + 2, d));
+      }
+      B.recolor(cx - r - 10, cy - r - 10, cx + r + 10, cy + r + 10);
+      for (let a = 0; a < 64; a++) {
+        const ang = a / 64 * Math.PI * 2;
+        paint(cx + Math.cos(ang) * (r + 6), cy + Math.sin(ang) * (r + 6) / 1.3, 1.4, [138, 120, 92], G_PATH, 0.8);
+        if (a % 8 === 0) decor(cx + Math.cos(ang) * (r + 8.5), cy + Math.sin(ang) * (r + 8.5) / 1.3, KIND_BENCH, 0.9, a & 3);
+        if (a % 8 === 4) decor(cx + Math.cos(ang) * (r + 9), cy + Math.sin(ang) * (r + 9) / 1.3, KIND_STREETLAMP, 4.5, 0);
+      }
+      for (let k = 0; k < 40; k++) {
+        const x = qx0 + 5 + rnd() * (qx1 - qx0 - 10), y = qy0 + 5 + rnd() * (qy1 - qy0 - 10);
+        if (Math.hypot(x - cx, (y - cy) * 1.3) < r + 11) continue;
+        decor(x, y, rnd() < 0.8 ? KIND_BIRCH : KIND_POPLAR, 10 + rnd() * 6, (rnd() * 4) | 0);
+      }
+      markNoVeg(qx0, qy0, qx1, qy1);
+      out.villages.push({ name: 'Парк «Дружба»', x: cx, y: cy, r: 70 });
+      out.labels.push({ name: 'Park mit Teich', x: cx, y: cy, kind: 'village' });
+    } else if (t === 'garages') {
+      for (let row = 0; row < 4; row++) garages(qx0 + 10, qy0 + 12 + row * 34, 14 + ((rnd() * 8) | 0), false, row % 2 ? 1 : -1);
+      for (let k = 0; k < 18; k++) decor(qx0 + rnd() * (qx1 - qx0), qy0 + rnd() * (qy1 - qy0), KIND_BIRCH, 9 + rnd() * 5, (rnd() * 4) | 0);
+      out.villages.push({ name: 'Гаражи', x: cx, y: cy, r: 60 });
+      out.labels.push({ name: 'Garagen', x: cx, y: cy, kind: 'village' });
+    }
+  }
+
+  // ---- Hof: Spielplatz, Bänke, Wäsche, Birken, Garagen, Autos, Mülltonnen ----
+  function courtyard(x0, x1, y0, y1, cx, cy, home) {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      if (mat[y * N + x]) continue;
+      const patch = hash2i(x >> 2, y >> 2, 31);
+      paintCol(x, y, patch < 0.2 ? [118, 104, 80] : [98, 112, 64], G_GRASS, 16);
+    }
+    // Spielplatz
+    const px = cx - 22, py = cy;
+    for (let y = py - 9; y <= py + 9; y++) for (let x = px - 12; x <= px + 12; x++) paintCol(x, y, [150, 132, 100], G_PATH, 14);
+    decor(px - 7, py - 3, KIND_SWING, 2.4, 0); decor(px - 2, py - 3, KIND_SWING, 2.4, 1);
+    decor(px + 6, py + 2, KIND_SLIDE, 2.1, (rnd() * 2) | 0);
+    for (const [bx, by] of [[px - 10, py + 7], [px, py + 8], [px + 10, py - 7]]) decor(bx, by, KIND_BENCH, 0.9, (rnd() * 4) | 0);
+    if (rnd() < 0.7) decor(px + 0.5, py + 8.1, KIND_CAT, 0.32, (rnd() * 4) | 0, hAt(px, py + 8) + 0.55);
+    // Wäscheleinen
+    for (let k = 0; k < 2; k++) decor(cx + 18 + k * 7, cy - 6 + k * 9, KIND_LAUNDRY, 2.0, (rnd() * 4) | 0);
+    // Birken und Pappeln
+    for (let k = 0; k < 18; k++) {
+      const x = x0 + 3 + rnd() * (x1 - x0 - 6), y = y0 + 2 + rnd() * (y1 - y0 - 4);
+      if (Math.abs(x - px) < 15 && Math.abs(y - py) < 12) continue;
+      if (Math.abs(x - (cx + 21)) < 9 && Math.abs(y - cy) < 12) continue;
+      decor(x, y, rnd() < 0.8 ? KIND_BIRCH : KIND_POPLAR, 9 + rnd() * 6, (rnd() * 4) | 0);
+    }
+    // Garagen am Rand, Autos, Mülltonnen
+    garages(x1 - 6, cy - 12, 8, true, -1);
+    for (let k = 0; k < 7; k++) if (rnd() < 0.65) decor(x0 + 4, y0 + 8 + k * 6, KIND_CAR, 1.45, (rnd() * 5) | 0);
+    for (let k = 0; k < 3; k++) decor(x1 - 12 - k * 1.8, y0 + 1.5, KIND_DUMPSTER, 1.3, k & 1);
+    markNoVeg(x0, y0, x1, y1);
+  }
+
+  // Straßenraster
+  for (let i = 0; i <= NKX; i++) road(KX0 + i * KW, KY0, KX0 + i * KW, KY0 + NKY * KH, 4);
+  for (let j = 0; j <= NKY; j++) road(KX0, KY0 + j * KH, KX0 + NKX * KW, KY0 + j * KH, 4);
+  // Kioske an ein paar Kreuzungen
+  for (let k = 0; k < 6; k++) {
+    const i = 1 + ((rnd() * (NKX - 1)) | 0), j = 1 + ((rnd() * (NKY - 1)) | 0);
+    kiosk(KX0 + i * KW + 7, KY0 + j * KH + 7, 1);
+  }
+
+  // ---------------------------------------------------------------- Hauptstraße nach Süden, Brücke über den Fluss
+  const mainX = KX0 + 3 * KW;
+  const ry = T.riverY(mainX);
+  let ys = null, ye = null;
+  for (let y = KY0 + NKY * KH; y < ry + 60; y++) { const h = H[y * N + mainX]; if (h < 0.4 && ys === null) ys = y - 2; if (ys !== null && h >= 0.4 && y > ry) { ye = y + 2; break; } }
+  if (ys !== null && ye !== null) {
+    const deck = Math.max(hAt(mainX, ys), hAt(mainX, ye), 2) + 1.6;
+    // Rampen
+    for (const [y0, dir] of [[ys, -1], [ye, 1]]) for (let s = 0; s < 14; s++) for (let o = -6; o <= 6; o++) {
+      const x = mainX + o, y = y0 + dir * s, i = y * N + x;
+      const target = lerp(deck, H[i], s / 13);
+      if (H[i] < target) H[i] = target;
+    }
+    B.recolor(mainX - 10, ys - 16, mainX + 10, ye + 16);
+    for (let y = ys; y <= ye; y++) for (let o = -6; o <= 6; o++) {
+      const x = mainX + o, edge = Math.abs(o) === 6;
+      // Boden unter der Brücke bleibt Boden/Wasser; nur die Pfeiler stehen fest im Grund
+      const g = H[y * N + x];
+      const info = { d: 1, base: g, nF: 1, bid: 997, apt: 0, part: edge ? 'rail' : 'bridge', wnx: Math.sign(o), wny: 0, texA: 'facade', texB: 'facade', wcol: P([150, 148, 140]), step: 'stone' };
+      const pillar = (y - ys) % 12 === 6 && Math.abs(o) >= 4;
+      setBuilt(x, y, pillar ? [g - 1, deck + (edge ? 1.0 : 0)] : [deck - 0.7, deck + (edge ? 1.0 : 0)], info, P([96, 96, 98]));
+      if (!pillar) info.gs = false;          // darunter normales Gelände zeichnen
+    }
+    out.bridges++;
+    out.bridgeList.push({ x: mainX, y: (ys + ye) / 2, dir: [0, 1], deck });
+    out.labels.push({ name: 'Brücke', x: mainX + 14, y: (ys + ye) / 2, kind: 'tower' });
+  }
+  road(mainX, KY0 + NKY * KH, mainX, Math.min(N - 60, ry + 260), 4);
+  road(mainX, KY0 - 300, mainX, KY0, 4);
+
+  // ---------------------------------------------------------------- Datschen-Gärten im Norden
+  const gx0 = CX - 300, gy0 = KY0 - 270;
+  for (let row = 0; row < 3; row++) for (let col = 0; col < 14; col++) {
+    const x0 = gx0 + col * 21 + (col >= 7 ? 12 : 0), y0 = gy0 + row * 30;
+    const st = stats(x0 + 9, y0 + 12, 12, 4);
+    if (st.water > 0) continue;
+    const base = st.mean;
+    flatten(x0, y0, x0 + 17, y0 + 24, base, 3);
+    // Beete
+    const crop = hash2i(row, col, 9);
+    for (let y = y0 + 13; y <= y0 + 22; y++) for (let x = x0 + 2; x <= x0 + 15; x++) {
+      const bed = (x - x0) % 3 !== 0;
+      paintCol(x, y, bed ? (crop < 0.5 ? [86, 66, 46] : [96, 112, 56]) : [120, 104, 80], G_FIELD, 10);
+    }
+    // Hütte, Gewächshaus, Apfelbaum, Zaun
+    stampHouse(x0 + 2, y0 + 2, 5, 4, true, 3, 'wood');
+    if (hash2i(row, col, 2) < 0.7) {
+      for (let a = 0; a < 3; a++) for (let b = 0; b < 5; b++) {
+        const x = x0 + 11 + a, y = y0 + 3 + b;
+        setBuilt(x, y, [base, base + 2.1 + (a === 1 ? 0.3 : 0)], { d: 1, base, nF: 1, bid: 996, apt: 0, part: 'glass', wnx: a === 0 ? -1 : a === 2 ? 1 : 0, wny: b === 0 ? -1 : b === 4 ? 1 : 0, texA: 'facade', texB: 'facade', wcol: P([200, 214, 210]) }, P([210, 224, 222]));
+      }
+    }
+    decor(x0 + 4 + hash2i(row, col, 3) * 8, y0 + 10.5, KIND_DECID, 4 + hash2i(row, col, 4) * 2.5, (row + col) & 3);
+    const fence = [];
+    for (let t = -1; t <= 18; t++) fence.push([x0 + t, y0 - 1], [x0 + t, y0 + 25, t >= 7 && t <= 9]);
+    for (let t = 0; t <= 24; t++) fence.push([x0 - 1, y0 + t], [x0 + 18, y0 + t]);
+    for (const [xi, yi, gate] of fence) {
+      if (gate) continue;                                          // Gartentor
+      if (!inMap(xi, yi) || mat[yi * N + xi]) continue;
+      setBuilt(xi, yi, [base, base + 1.0], { d: 1, base, nF: 1, bid: 995, apt: 0, part: 'fence', wnx: 0, wny: 1, texA: 'facade', texB: 'facade', wcol: P([128, 96, 64]) }, P([128, 96, 64]));
+    }
+    markNoVeg(x0 - 2, y0 - 2, x0 + 20, y0 + 27);
+    // Weg zwischen den Reihen
+    for (let x = x0 - 2; x <= x0 + 20; x++) for (let y = y0 + 26; y <= y0 + 28; y++) paintCol(x, y, [124, 108, 82], G_PATH, 12);
+  }
+  out.villages.push({ name: 'Сады «Рассвет»', x: CX, y: gy0 + 45, r: 170 });
+  out.labels.push({ name: 'Datschen', x: CX, y: gy0 + 45, kind: 'village' });
+  road(mainX, gy0 + 88, mainX, KY0 - 4, 4);
 
   return out;
 }
@@ -1755,6 +2349,232 @@ function personSprite(sprites, color, frame, lantern) {
   return sprites.people.get(key);
 }
 
+// ======================= Plattenbau =======================
+function rect(s, x0, y0, w, h, c, emit) { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) s.set(x, y, c, emit); }
+
+function makeBirch(rnd, v) {
+  const s = makeSpriteCanvas(24, 46), cx = 12;
+  const leaves = [[[176, 166, 60], [214, 186, 70], [236, 206, 96]], [[150, 150, 60], [190, 176, 66], [224, 200, 90]],
+    [[120, 140, 60], [160, 168, 70], [196, 190, 86]], [[190, 122, 50], [222, 156, 60], [240, 190, 90]]][v & 3];
+  // weißer Stamm mit schwarzen Flecken, leicht schief
+  for (let y = 12; y < 46; y++) {
+    const x = cx + Math.round(Math.sin(y * 0.12) * 0.8);
+    const mark = hash2i(v, y, 5) < 0.22;
+    s.set(x, y, mark ? [40, 38, 36] : [226, 224, 214]); s.set(x + 1, y, mark ? [30, 28, 26] : [182, 180, 172]);
+  }
+  // dünne Äste
+  for (let i = 0; i < 6; i++) { const y = 14 + i * 4, dir = i % 2 ? 1 : -1; for (let k = 1; k < 5; k++) s.set(cx + dir * k, y - k, [70, 60, 50]); }
+  // lockere Krone aus kleinen Büscheln
+  for (let i = 0; i < 26; i++) {
+    const bx = cx + (rnd() - 0.5) * 18, by = 4 + rnd() * 24, r = 1.5 + rnd() * 2.5;
+    for (let y = Math.floor(by - r); y <= by + r; y++) for (let x = Math.floor(bx - r); x <= bx + r; x++) {
+      if (Math.hypot(x - bx, y - by) > r + (rnd() - 0.5) || rnd() < 0.25) continue;
+      const sh = clamp((((by - y) / r) * 0.5 + 0.5 + (rnd() - 0.5) * 0.6) * 3, 0, 2.99) | 0;
+      s.set(x, y, leaves[sh]);
+    }
+  }
+  return s;
+}
+
+function makePoplar(rnd, v) {
+  const s = makeSpriteCanvas(12, 48), cx = 6;
+  const pal = [[[60, 80, 40], [86, 108, 50], [118, 132, 62]], [[90, 96, 40], [130, 128, 50], [170, 160, 70]]][v & 1];
+  for (let y = 40; y < 48; y++) { s.set(cx, y, [90, 82, 70]); s.set(cx - 1, y, [70, 64, 56]); }
+  for (let y = 0; y < 42; y++) {
+    const w = Math.sin(Math.min(1, (y + 2) / 44) * Math.PI) * 5 + 0.5;
+    for (let x = Math.round(cx - w); x <= cx + w; x++) {
+      if (rnd() < 0.12) continue;
+      const sh = clamp(((cx - x) / (w + 1) * 0.6 + 0.5 + (rnd() - 0.5) * 0.5) * 3, 0, 2.99) | 0;
+      s.set(x, y, pal[sh]);
+    }
+  }
+  return s;
+}
+
+const CAR_COLORS = [[224, 222, 212], [196, 176, 132], [168, 52, 44], [70, 96, 150], [92, 120, 86]];
+function makeCar(rnd, v) {
+  const s = makeSpriteCanvas(26, 11), c = CAR_COLORS[v % CAR_COLORS.length], cd = c.map(x => x * 0.75);
+  rect(s, 1, 5, 24, 4, c);                     // Karosserie
+  rect(s, 6, 1, 13, 4, c);                     // Dach/Kabine
+  rect(s, 7, 2, 5, 3, [70, 86, 104]); rect(s, 13, 2, 5, 3, [70, 86, 104]);   // Fenster
+  rect(s, 1, 8, 24, 1, cd);
+  rect(s, 0, 6, 1, 2, [200, 200, 196]); rect(s, 25, 6, 1, 2, [200, 200, 196]);   // Stoßstangen
+  s.set(24, 5, [250, 230, 160]); s.set(1, 5, [190, 60, 50]);                    // Lichter
+  for (const wx of [5, 20]) { rect(s, wx - 2, 8, 4, 3, [26, 26, 28]); s.set(wx - 1, 9, [120, 120, 124]); }
+  return s;
+}
+
+function makeBench(rnd, v) {
+  const s = makeSpriteCanvas(14, 7), wood = [[96, 120, 70], [128, 92, 60], [70, 100, 120], [150, 110, 64]][v & 3];
+  rect(s, 0, 0, 14, 1, wood); rect(s, 0, 2, 14, 1, wood); rect(s, 0, 4, 14, 1, wood.map(x => x * 0.85));
+  rect(s, 1, 4, 2, 3, [150, 148, 140]); rect(s, 11, 4, 2, 3, [130, 128, 122]);
+  return s;
+}
+
+function makeSwing(rnd, v) {
+  const s = makeSpriteCanvas(16, 16), m = [[200, 70, 60], [70, 110, 190]][v & 1];
+  for (let y = 0; y < 16; y++) { s.set(2 - (y >> 3), y, m); s.set(13 + (y >> 3), y, m); }
+  rect(s, 2, 0, 12, 1, m);
+  for (let y = 1; y < 11; y++) { s.set(6, y, [150, 150, 150]); s.set(9, y, [150, 150, 150]); }
+  rect(s, 5, 11, 6, 1, [120, 84, 52]);
+  return s;
+}
+
+function makeSlide(rnd, v) {
+  const s = makeSpriteCanvas(18, 13), c = [[220, 180, 50], [200, 70, 60]][v & 1];
+  for (let y = 2; y < 13; y++) { s.set(2, y, [90, 90, 96]); s.set(5, y, [90, 90, 96]); }
+  for (let y = 3; y < 13; y += 2) for (let x = 2; x <= 5; x++) s.set(x, y, [120, 120, 126]);
+  rect(s, 1, 1, 6, 1, [90, 90, 96]);
+  for (let x = 6; x < 18; x++) { const y = 2 + Math.round((x - 6) * 0.85); s.set(x, y, c); s.set(x, y + 1, c.map(q => q * 0.75)); }
+  return s;
+}
+
+function makeLaundry(rnd, v) {
+  const s = makeSpriteCanvas(28, 13);
+  for (let y = 0; y < 13; y++) { s.set(1, y, [110, 110, 112]); s.set(26, y, [110, 110, 112]); }
+  rect(s, 0, 0, 3, 1, [110, 110, 112]); rect(s, 25, 0, 3, 1, [110, 110, 112]);
+  for (let x = 2; x < 26; x++) s.set(x, 1 + (Math.abs(x - 14) < 8 ? 1 : 0), [200, 200, 196]);
+  const cols = [[220, 220, 214], [200, 80, 70], [80, 120, 180], [230, 200, 90], [150, 190, 150], [210, 160, 190]];
+  let x = 3;
+  while (x < 23) {
+    const w = 2 + ((rnd() * 4) | 0), h = 3 + ((rnd() * 5) | 0), c = cols[(rnd() * cols.length) | 0];
+    rect(s, x, 2, w, h, c);
+    x += w + 1 + ((rnd() * 2) | 0);
+  }
+  return s;
+}
+
+function makeAntenna(rnd, v) {
+  const s = makeSpriteCanvas(13, 18), m = [64, 64, 68];
+  for (let y = 0; y < 18; y++) s.set(6, y, m);
+  for (let i = 0; i < 4; i++) { const y = 1 + i * 3, w = 6 - i; for (let x = 6 - w; x <= 6 + w; x++) s.set(x, y, m); }
+  if (v & 1) for (let x = 2; x <= 10; x++) s.set(x, 14, m);
+  return s;
+}
+
+function makeDumpster(rnd, v) {
+  const s = makeSpriteCanvas(12, 9), c = [[70, 110, 80], [80, 90, 110]][v & 1];
+  rect(s, 0, 1, 12, 7, c); rect(s, 0, 0, 12, 1, c.map(x => x * 0.7));
+  for (let x = 1; x < 12; x += 3) rect(s, x, 2, 1, 5, c.map(q => q * 0.8));
+  rect(s, 1, 8, 2, 1, [30, 30, 30]); rect(s, 9, 8, 2, 1, [30, 30, 30]);
+  return s;
+}
+
+function makeStreetLamp() {
+  const s = makeSpriteCanvas(7, 26);
+  for (let y = 2; y < 26; y++) { s.set(2, y, [130, 128, 122]); s.set(3, y, [104, 102, 98]); }
+  rect(s, 2, 1, 4, 1, [90, 90, 92]);
+  rect(s, 3, 2, 4, 2, [255, 176, 70], true);    // Natriumdampf-Leuchte
+  return s;
+}
+
+function makeSofa(rnd, v) {
+  const s = makeSpriteCanvas(16, 8), c = [[120, 78, 60], [86, 104, 80], [130, 110, 90], [96, 70, 110]][v & 3];
+  rect(s, 0, 0, 16, 5, c.map(x => x * 0.85)); rect(s, 0, 4, 16, 3, c); rect(s, 0, 2, 2, 5, c); rect(s, 14, 2, 2, 5, c);
+  rect(s, 1, 7, 1, 1, [40, 30, 20]); rect(s, 14, 7, 1, 1, [40, 30, 20]);
+  for (let x = 3; x < 13; x += 5) s.set(x, 1, c.map(q => q * 0.6));
+  return s;
+}
+
+function makeTable(rnd, v) {
+  const s = makeSpriteCanvas(12, 7), w = [[120, 84, 52], [150, 110, 70]][v & 1];
+  rect(s, 0, 0, 12, 2, w); rect(s, 1, 2, 1, 5, w.map(x => x * 0.7)); rect(s, 10, 2, 1, 5, w.map(x => x * 0.7));
+  if (v & 2) { s.set(4, 0, [220, 220, 220]); s.set(7, 0, [200, 60, 50]); }   // Teetasse und Apfel
+  return s;
+}
+
+function makeTV() {
+  const s = makeSpriteCanvas(9, 10);
+  rect(s, 0, 0, 9, 7, [96, 64, 40]);
+  rect(s, 1, 1, 6, 5, [120, 150, 190], true);        // Bildschirm leuchtet nachts bläulich
+  s.set(8, 2, [180, 180, 170]); s.set(8, 4, [180, 180, 170]);
+  rect(s, 2, 7, 1, 3, [60, 44, 30]); rect(s, 6, 7, 1, 3, [60, 44, 30]);
+  return s;
+}
+
+function makeFridge() {
+  const s = makeSpriteCanvas(7, 15);
+  rect(s, 0, 0, 7, 15, [226, 226, 218]); rect(s, 0, 0, 7, 1, [200, 200, 194]);
+  rect(s, 0, 5, 7, 1, [180, 180, 174]); s.set(5, 3, [150, 150, 150]); s.set(5, 7, [150, 150, 150]);
+  rect(s, 6, 0, 1, 15, [190, 190, 184]);
+  return s;
+}
+
+function makeBed(rnd, v) {
+  const s = makeSpriteCanvas(18, 7), c = [[150, 60, 60], [70, 100, 150], [120, 130, 80], [160, 130, 90]][v & 3];
+  rect(s, 0, 0, 2, 7, [110, 76, 48]); rect(s, 2, 3, 16, 3, c); rect(s, 2, 2, 4, 2, [236, 232, 220]);
+  rect(s, 2, 6, 16, 1, [90, 62, 40]);
+  return s;
+}
+
+function makeStove() {
+  const s = makeSpriteCanvas(8, 9);
+  rect(s, 0, 1, 8, 8, [220, 218, 210]); rect(s, 0, 0, 8, 1, [40, 40, 40]);
+  rect(s, 1, 3, 6, 4, [60, 60, 64]); s.set(2, 1, [80, 80, 80]); s.set(5, 1, [80, 80, 80]);
+  return s;
+}
+
+function makePlant(rnd) {
+  const s = makeSpriteCanvas(8, 11);
+  rect(s, 2, 8, 4, 3, [160, 80, 50]);
+  for (let i = 0; i < 9; i++) { const x = 1 + ((rnd() * 6) | 0), y = (rnd() * 7) | 0; rect(s, x, y, 2, 2, rnd() < 0.5 ? [60, 110, 50] : [90, 140, 60]); }
+  s.set(4, 7, [70, 90, 40]);
+  return s;
+}
+
+function makeWardrobe(rnd, v) {
+  const s = makeSpriteCanvas(11, 18), w = [[96, 64, 40], [120, 84, 52]][v & 1];
+  rect(s, 0, 0, 11, 18, w); rect(s, 5, 1, 1, 16, w.map(x => x * 0.7));
+  rect(s, 1, 2, 3, 5, [150, 170, 180]);                   // Glasvitrine
+  s.set(4, 10, [200, 180, 120]); s.set(6, 10, [200, 180, 120]);
+  return s;
+}
+
+function makeAshtray() {
+  // Hocker mit Glas-Aschenbecher und einer Kippe
+  const s = makeSpriteCanvas(8, 8);
+  rect(s, 1, 2, 6, 1, [120, 84, 52]); s.set(1, 3, [100, 70, 44]); s.set(6, 3, [100, 70, 44]);
+  for (let y = 3; y < 8; y++) { s.set(1, y, [100, 70, 44]); s.set(6, y, [100, 70, 44]); }
+  rect(s, 2, 1, 4, 1, [150, 170, 176]); s.set(3, 0, [236, 232, 220]); s.set(4, 0, [200, 140, 80]);
+  return s;
+}
+
+// Die E-Gitarre nach dem Foto: schwarzer Korpus mit Griffloch, lila Perlmutt-Schlagbrett,
+// Ranken-Inlays auf dem Griffbrett, gravierte silberne Tonabnehmer, weißer Schriftzug; im Ständer
+function makeGuitarStand() {
+  const s = makeSpriteCanvas(11, 30);
+  const blk = [22, 22, 26], hi = [70, 70, 80], purp = [110, 60, 150], purpL = [150, 100, 190];
+  const neck = [110, 48, 40], inl = [236, 236, 228], silver = [196, 196, 204];
+  // Kopf und Hals
+  rect(s, 4, 0, 3, 3, blk); s.set(3, 1, [180, 180, 180]); s.set(7, 0, [180, 180, 180]);
+  for (let y = 3; y < 15; y++) { s.set(5, y, neck); s.set(4, y, neck.map(x => x * 0.8)); if (y % 3 === 1) s.set(5, y, inl); }
+  // Korpus
+  for (let y = 15; y < 27; y++) {
+    const half = y < 18 ? 3 + (y - 15) : y < 23 ? 5 : 5 - (y - 23);
+    for (let x = 5 - half; x <= 5 + half; x++) s.set(x, y, blk);
+  }
+  s.set(1, 15, blk); s.set(0, 14, blk); s.set(9, 15, blk); s.set(10, 14, blk);   // Hörner
+  rect(s, 4, 16, 4, 7, purp); s.set(5, 18, purpL); s.set(6, 20, purpL);          // Schlagbrett
+  rect(s, 4, 17, 3, 1, silver); s.set(5, 19, [60, 60, 64]); rect(s, 4, 21, 3, 1, silver);   // Tonabnehmer
+  s.set(2, 18, [6, 6, 8]); s.set(2, 19, [6, 6, 8]);                                   // Griffloch
+  s.set(1, 23, inl); s.set(2, 24, inl); s.set(3, 23, inl);                          // Schriftzug
+  rect(s, 4, 24, 3, 1, [40, 40, 44]);                                               // Vibrato
+  s.set(1, 20, hi); s.set(1, 21, hi);
+  // Ständer
+  for (let y = 22; y < 30; y++) { s.set(2 + ((y - 22) >> 2), y, [60, 60, 64]); s.set(8 - ((y - 22) >> 2), y, [60, 60, 64]); }
+  rect(s, 1, 29, 9, 1, [50, 50, 54]);
+  return s;
+}
+
+function makeCat(rnd, v) {
+  const s = makeSpriteCanvas(8, 7), c = [[60, 58, 56], [200, 130, 60], [150, 146, 140], [30, 30, 32]][v & 3];
+  rect(s, 2, 2, 4, 5, c); rect(s, 1, 5, 6, 2, c);
+  s.set(2, 1, c); s.set(5, 1, c); rect(s, 2, 2, 4, 2, c);
+  s.set(3, 3, [200, 210, 90]); s.set(5, 3, [200, 210, 90]);
+  s.set(7, 4, c); s.set(7, 3, c);
+  return s;
+}
+
 // sprites[kind][variant]; die Reihenfolge folgt den KIND_*-Konstanten
 function buildSprites(seed) {
   const rnd = mulberry32(seed ^ 0x5a17e);
@@ -1763,6 +2583,11 @@ function buildSprites(seed) {
     four(makeConifer), four(makeDeciduous), four(makeBush), four(makeRock),
     four(() => makeLamp()), four(makeWell), four(makeHay),
     four((r, i) => makeBarrel(r, i >= 2)), four((r, i) => makeBanner(i)),
+    // Plattenbau (Index = KIND_*)
+    four(makeBirch), four(makeCar).concat([makeCar(rnd, 4)]), four(makeBench), four(makeSwing), four(makeSlide), four(makeLaundry),
+    four(makeAntenna), four(makeDumpster), four(() => makeStreetLamp()), four(makeSofa), four(makeTable), four(() => makeTV()),
+    four(() => makeFridge()), four(makeBed), four(() => makeStove()), four(makePlant), four(makeWardrobe), four(() => makeAshtray()),
+    four(() => makeGuitarStand()), four(makeCat), four(makePoplar),
   ];
   kinds.grass = [0, 1, 2, 3].map(() => makeGrassTuft(rnd));
   kinds.flowers = FLOWER_COLORS.map(c => makeFlower(c));
@@ -1851,10 +2676,11 @@ class Weather {
     }
   }
 
-  target(totalHours, hours, mode) {
+  target(totalHours, hours, mode, world) {
     if (mode === 'clear') return { cover: 0.6, rain: 0, fog: 0, wind: 0.25 };
+    const grey = world === 'plattenbau' ? 0.1 : 0;          // im Plattenbau öfter bedeckt
     const w = this.n.fbm((totalHours + this.off) / 10, 1.3, 3);          // etwa -0.5..0.5
-    const cover = clamp(0.58 - w * 0.75, 0.24, 0.85);
+    const cover = clamp(0.58 - grey - w * 0.75, 0.24, 0.85);
     const rain = mode === 'dry' ? 0 : smoothstep(0.17, 0.3, w);
     const dayNoise = this.n.noise(Math.floor(totalHours / 24) * 3.1 + 0.5, 7.7);
     const morning = smoothstep(3.5, 5.5, hours) * (1 - smoothstep(8, 10.5, hours));
@@ -1863,8 +2689,8 @@ class Weather {
     return { cover, rain, fog, wind };
   }
 
-  update(dt, totalHours, hours, mode) {
-    const t = this.target(totalHours, hours, mode);
+  update(dt, totalHours, hours, mode, world) {
+    const t = this.target(totalHours, hours, mode, world);
     if (!this.init) { Object.assign(this, t); this.init = true; return; }
     const k = Math.min(1, dt * 0.3);
     this.cover += (t.cover - this.cover) * k;
@@ -2086,6 +2912,9 @@ class Renderer {
     P.wind = S.wind ?? 0.3;
     P.shadowOn = this.shadowMap && S.sunDir[2] > 0.03 && S.sunVis > 0.05;
     P.reflK = 0.9 * (1 - (S.rain || 0) * 0.6);
+    P.dayLight = clamp(S.sunVis * (1 - (S.overcast || 0) * 0.45), 0, 1);
+    P.indoors = !!env.indoors;
+    this.IL = this.IL || new Float32Array(3);
 
     this.prepareColumns(S);
     this.zbuf.fill(1e9);
@@ -2096,7 +2925,9 @@ class Renderer {
     if (this.details) this.drawDetails(cam, S, t);
     this.drawParticles(cam, S, t);
     if (this.fishView) this.drawFishing(cam, S, t, this.fishView);
-    if (P.rain > 0.02) this.drawRain(t, P.rain, P.wind);
+    if (P.rain > 0.02 && !P.indoors) this.drawRain(t, P.rain, P.wind);
+    if (this.overlay) this.overlay(this, cam, S, t);
+    if (this.grain) this.postGrain(t);
     this.ctx.putImageData(this.img, 0, 0);
   }
 
@@ -2222,7 +3053,7 @@ class Renderer {
         }
         const wx = camX + dx * z, wy = camY + dy * z;
         const gx = (wx - off) * scale, gy = (wy - off) * scale;
-        let h, kc = -1, sf = 0;
+        let h, kc = -1, sf = 0, farInfo = null;
         if (gx >= 0 && gy >= 0 && gx < size - 1 && gy < size - 1) {
           const ix = gx | 0, iy = gy | 0, ax = gx - ix, ay = gy - iy, k = iy * size + ix;
           kc = k + (ax > 0.5 ? 1 : 0) + (ay > 0.5 ? size : 0);
@@ -2230,6 +3061,11 @@ class Renderer {
             // An Bauwerken nicht glätten, sonst werden Wände zu Rampen
             h = hA[kc];
             if (L === 0) sf = mat[kc];
+            else if (sA[kc]) {
+              // grobe Detailstufe: eine Zelle aus Stufe 0 als Vertreter für Material und Fenster nehmen
+              const k0 = (((kc / size) | 0) << L) * N0 + ((kc % size) << L) + ((1 << L) >> 1) * (N0 + 1);
+              if (mat[k0] & M_STRUCT) { const inf = cells.get(k0); if (inf && inf.d) farInfo = inf; }
+            }
           } else {
             const h0 = hA[k] + (hA[k + 1] - hA[k]) * ax;
             const h1 = hA[k + size] + (hA[k + size + 1] - hA[k + size]) * ax;
@@ -2241,9 +3077,12 @@ class Renderer {
 
         // ---- 1. Schwebender Teil: Brückendeck, Steg, Torbogen ----
         if (sf & M_SPAN) {
-          const info = cells.get(kc);
-          const n = cover(horizon + (camZ - info.spanTop) * focal / z, horizon + (camZ - info.spanBot) * focal / z);
-          for (let r = 0; r < n; r++) this.shadeStruct(i, oa[r], ob[r], z, wx, wy, kc, info, info.spanTop, S);
+          // mehrere schwebende Abschnitte übereinander (Böden, Decken, Brüstungen, Stufen)
+          const info = cells.get(kc), sp = info.spans;
+          for (let q = 0; q < sp.length; q += 2) {
+            const n = cover(horizon + (camZ - sp[q + 1]) * focal / z, horizon + (camZ - sp[q]) * focal / z);
+            for (let r = 0; r < n; r++) this.shadeStruct(i, oa[r], ob[r], z, wx, wy, kc, info, sp[q + 1], S, sp[q]);
+          }
         }
 
         // ---- 2. Boden, Wasser oder Gebäude ----
@@ -2268,8 +3107,11 @@ class Renderer {
         } else n = cover(syf, 1e9);
 
         if (n) {
-          if ((sf & M_STRUCT) && !(sf & M_SPAN)) {
-            const info = cells.get(kc);
+          const sinfo = (sf & M_STRUCT) ? cells.get(kc) : null;
+          if (farInfo) {
+            for (let r = 0; r < n; r++) this.shadePanel(i, oa[r], ob[r], z, wx, wy, -1, farInfo, h, S, undefined, true);
+          } else if (sinfo && (!(sf & M_SPAN) || sinfo.gs)) {
+            const info = sinfo;
             for (let r = 0; r < n; r++) this.shadeStruct(i, oa[r], ob[r], z, wx, wy, kc, info, h, S);
           } else {
             // ---- Farbe dieses Abschnitts ----
@@ -2376,8 +3218,9 @@ class Renderer {
   }
 
   // ---- Bauwerks-Pixel: Textur je nach Material, Fenster, Türen, Licht ----
-  shadeStruct(i, y0, y1, z, wx, wy, kc, info, topAbs, S) {
+  shadeStruct(i, y0, y1, z, wx, wy, kc, info, topAbs, S, botAbs) {
     if (y1 <= y0) return;
+    if (info.d) { this.shadePanel(i, y0, y1, z, wx, wy, kc, info, topAbs, S, botAbs); return; }
     const P = this.P, W = this.W, buf = this.buf, zbuf = this.zbuf, world = this.world;
     const L0 = world.levels[0];
     const zstep = z / this.focal;
@@ -2484,6 +3327,190 @@ class Renderer {
       r = r * kf + fr; g = g * kf + fg; b = b * kf + fb;
       buf[p] = 0xff000000 | ((b > 255 ? 255 : b < 0 ? 0 : b | 0) << 16) | ((g > 255 ? 255 : g < 0 ? 0 : g | 0) << 8) | (r > 255 ? 255 : r < 0 ? 0 : r | 0);
       zbuf[p] = z;
+    }
+  }
+
+  // ---- Innenlicht je Wohnung und Stockwerk: Tageslicht durch die Fenster, nachts Lampen, Fernseher, Neonröhre ----
+  indoorLight(apt, k, stair) {
+    const P = this.P, IL = this.IL, day = P.dayLight;
+    let r = 0.26 + day * 0.56, g = 0.27 + day * 0.57, b = 0.3 + day * 0.58;
+    const night = P.winGlow;
+    if (night > 0) {
+      let lr, lg, lb;
+      if (stair) {
+        const fl = hash2i(apt, k, (P.t * 6) | 0) > 0.985 ? 0.25 : 1;
+        lr = 0.56 * fl; lg = 0.66 * fl; lb = 0.6 * fl;
+      } else if (apt === this.world.homeApt || hash2i(apt, k, 51) < 0.62) {
+        lr = 1.0; lg = 0.78; lb = 0.52;
+        if (apt !== this.world.homeApt && hash2i(apt, k, 52) < 0.28) {
+          const f = 0.7 + 0.3 * Math.sin(P.t * 11 + apt) * Math.sin(P.t * 4.7 + k * 3);
+          lr = 0.5 * f; lg = 0.6 * f; lb = 0.95 * f;
+        }
+      } else { lr = 0.11; lg = 0.12; lb = 0.17; }
+      r += (lr - r) * night; g += (lg - g) * night; b += (lb - b) * night;
+    }
+    if (P.lantern > 0) { r += P.lantern * 0.12; g += P.lantern * 0.09; b += P.lantern * 0.05; }
+    IL[0] = r; IL[1] = g; IL[2] = b;
+    return IL;
+  }
+
+  // ---- Plattenbau-Pixel: Beton, Tapete, Treppenhaus-Farbe, Böden, Decken; far = Fernsicht mit Fenstern als Textur ----
+  shadePanel(i, y0, y1, z, wx, wy, kc, info, topAbs, S, botAbs, far) {
+    if (y1 <= y0) return;
+    const P = this.P, W = this.W, buf = this.buf, zbuf = this.zbuf;
+    const N0 = this.world.N;
+    const zstep = z / this.focal;
+    const base = info.base;
+    let zw = P.camZ - (y0 + 0.5 - P.horizon) * zstep;
+    const topRel = topAbs - 0.07, botRel = botAbs !== undefined ? botAbs + 0.07 : -1e9;
+    const wnx = info.wnx, wny = info.wny;
+    const alongY = (wnx < 0 ? -wnx : wnx) > (wny < 0 ? -wny : wny);
+    const u = alongY ? wy : wx;
+    const uf = u - Math.floor(u);
+    // Von welcher Seite schauen wir auf die Wand? (Normale zeigt zur Seite A)
+    const cx = kc >= 0 ? (kc % N0) + 0.5 : wx, cy = kc >= 0 ? ((kc / N0) | 0) + 0.5 : wy;
+    const sideA = (P.camX - cx) * wnx + (P.camY - cy) * wny >= 0;
+    const tex = far ? 'facade' : (sideA ? info.texA : info.texB);
+    const outdoorPart = info.part === 'ext' || info.part === 'rail' || info.part === 'canopy' || info.part === 'fence' ||
+      info.part === 'garage' || info.part === 'kiosk' || info.part === 'bridge' || info.part === 'glass' || info.part === 'balc';
+    const indoorFace = !far && (tex === 'apt' || tex === 'stair');
+
+    // Außenlicht (Wand mit Normale, Oberseite nach oben)
+    const sd = S.sunDir, amb = S.amb, sl = S.sunLight, ml = S.moonLight, md = S.moonDir;
+    let cs = 1;
+    if (S.cloudShadow > 0) {
+      const sdz = sd[2];
+      const ox = sdz > 0.15 ? clamp(sd[0] / sdz * CLOUD_H, -1500, 1500) : 0, oy = sdz > 0.15 ? clamp(sd[1] / sdz * CLOUD_H, -1500, 1500) : 0;
+      const qx = ((wx + ox) / CLOUD_SCALE + this.windX) | 0, qy = ((wy + oy) / CLOUD_SCALE + this.windY) | 0;
+      cs = 1 - S.cloudShadow * this.cloud[((qy & 255) << 8) | (qx & 255)];
+    }
+    if (P.shadowOn) cs *= 1 - this.shadowAt(wx, wy) * 0.85;
+    let lamp = 0;
+    if (this.nLights && P.lampK > 0 && z < 140) lamp = this.lampAt(wx, wy, base + 1.5);
+    if (P.lantern > 0 && z < 10) { const q = 1 - z / 10; lamp += P.lantern * q * q * q * 1.3; }
+    const side = sideA ? 1 : -1;
+    let dW = (wnx * sd[0] + wny * sd[1]) * side; dW = dW > 0 ? dW * cs : 0;
+    let mW = (wnx * md[0] + wny * md[1]) * side; mW = mW > 0 ? mW : 0;
+    const k8 = 0.86;
+    const owr = (amb[0] + sl[0] * dW + ml[0] * mW + lamp * 1.15) * k8, owg = (amb[1] + sl[1] * dW + ml[1] * mW + lamp * 0.72) * k8, owb = (amb[2] + sl[2] * dW + ml[2] * mW + lamp * 0.34) * k8;
+    const sdz = sd[2] > 0 ? sd[2] * cs : 0, mdz = md[2] > 0 ? md[2] : 0;
+    const otr = (amb[0] + sl[0] * sdz + ml[0] * mdz + lamp * 1.15) * k8, otg = (amb[1] + sl[1] * sdz + ml[1] * mdz + lamp * 0.72) * k8, otb = (amb[2] + sl[2] * sdz + ml[2] * mdz + lamp * 0.34) * k8;
+
+    let f = 1 - Math.exp(-z * P.fogK);
+    const fr = this.fogR[i] * f, fg = this.fogG[i] * f, fb = this.fogB[i] * f, kf = 1 - f;
+    const wc = info.wcol, wcr = wc & 255, wcg = (wc >>> 8) & 255, wcb = (wc >>> 16) & 255;
+    const apt = info.apt, stair = info.part === 'stair' || tex === 'stair';
+    const wp = (hash2i(apt, 3, 1) * 6) | 0;                 // Tapetenmuster der Wohnung
+    const WP = [[176, 160, 120], [150, 168, 140], [190, 170, 150], [140, 150, 176], [196, 186, 150], [168, 140, 120]][wp];
+    const WPA = [[150, 110, 80], [110, 130, 100], [170, 120, 110], [110, 120, 150], [160, 140, 90], [130, 96, 80]][wp];
+    const paint = info.paint ? [70, 92, 124] : [78, 112, 94];
+    const FH = FLOOR_H;
+    let lastK = -99, il = null;
+
+    for (let y = y0, p = y0 * W + i; y < y1; y++, p += W, zw -= zstep) {
+      const zrel = zw - base;
+      const kf0 = Math.floor((zrel + 0.06) / FH), zf = zrel - kf0 * FH;
+      const top = zw >= topRel, bottom = zw <= botRel && !top;
+      let r, g, b, lr, lg, lb, inside = indoorFace;
+      if (top) {
+        // ---- Oberseiten: Böden, Dach, Brüstungen ----
+        inside = !outdoorPart && !(info.part === 'ext') && zrel < info.nF * FH - 0.3;
+        if (info.part === 'room') {
+          if (info.floor === 0 || hash2i(apt, kf0, 7) < 0.5) {      // Parkett
+            const q = (alongY ? wx : wy) * 3.3, pl = Math.floor(q);
+            const m = (q - pl) < 0.12 ? 0.72 : 0.9 + hash2i(pl, Math.floor(u * 0.8), 3) * 0.18;
+            r = 132 * m; g = 92 * m; b = 58 * m;
+          } else {                                                   // Linoleum mit Karomuster
+            const c = ((Math.floor(wx * 2) + Math.floor(wy * 2)) & 1) ? 0.92 : 1;
+            r = 150 * c; g = 136 * c; b = 108 * c;
+          }
+        } else if (info.part === 'stair') { const n = hash2i((wx * 6) | 0, (wy * 6) | 0, 4); r = g = b = 132 + n * 30; b -= 6; }
+        else if (zrel > info.nF * FH - 0.3 && info.part !== 'rail' && info.part !== 'balc') { const n = hash2i((wx * 3) | 0, (wy * 3) | 0, 8); r = 70 + n * 16; g = 68 + n * 16; b = 66 + n * 14; inside = false; }   // Teerdach
+        else { r = wcr * 0.9; g = wcg * 0.9; b = wcb * 0.9; }
+      } else if (bottom) {
+        // ---- Unterseiten: Decken ----
+        inside = !outdoorPart;
+        r = 222; g = 220; b = 210;
+        if (stair) { r = 196; g = 196; b = 186; }
+        if (info.part === 'balc' || info.part === 'canopy' || info.part === 'bridge') { r = 150; g = 148; b = 142; inside = false; }
+      } else if (tex === 'facade') {
+        // ---- Fassade: Betonplatten mit Fugen, Wandbild an den Giebeln, Fenster in der Ferne ----
+        r = wcr; g = wcg; b = wcb;
+        let m = 0.92 + hash2i(Math.floor(u / 3), kf0, info.bid) * 0.12;
+        if (zf > FH - 0.07 || (u % 3 + 3) % 3 < 0.07) m *= 0.78;
+        if (info.mural && zrel > 3 && zrel < info.nF * FH - 2) {
+          const q = (u * 0.18 + zrel * 0.1), band = Math.floor(q) & 3;
+          if ((q - Math.floor(q)) < 0.5) { const MC = [[180, 60, 50], [60, 90, 150], [220, 180, 70], [70, 130, 110]][(band + info.bid) & 3]; r = MC[0]; g = MC[1]; b = MC[2]; m = 1; }
+        }
+        if (info.part === 'garage') {
+          m *= (uf * 6 - Math.floor(uf * 6)) < 0.3 ? 0.82 : 1;          // Wellblech
+          if (info.door && zrel < 2.1) { r = wcr * 0.85; g = wcg * 0.85; b = wcb * 0.85; if (uf < 0.06 || uf > 0.94) m = 0.6; }
+          if (hash2i(info.su, (zrel * 3) | 0, (u * 2) | 0) > 0.93) { r = 140; g = 80; b = 50; }  // Rost
+        }
+        if (info.part === 'rail' && info.balcCol !== undefined) { const BC = [[200, 196, 186], [120, 150, 180], [190, 120, 90], [150, 170, 120]][info.balcCol]; r = BC[0]; g = BC[1]; b = BC[2]; m = (zrel * 4 - Math.floor(zrel * 4)) < 0.2 ? 0.85 : 1; }
+        if (info.part === 'glass') { r = 196; g = 214; b = 210; m = (uf < 0.08 || uf > 0.92 || (zrel % 0.7) < 0.05) ? 0.6 : 1; }
+        if (info.part === 'kiosk' && info.win && zrel > 0.9 && zrel < 2.0) { r = 70; g = 86; b = 100; if (P.winGlow > 0) { r = lerp(70, 255, P.winGlow); g = lerp(86, 220, P.winGlow); b = lerp(100, 150, P.winGlow); } }
+        if (info.part === 'kiosk' && zrel > 2.1) { r = 180; g = 60; b = 50; }
+        r *= m; g *= m; b *= m;
+        if (far && info.part !== 'garage' && info.part !== 'fence' && zf > 0.9 && zf < 2.2 && zrel < info.nF * FH) {
+          const col = Math.floor(u / 2.5), cfr = u / 2.5 - col;
+          if (cfr > 0.2 && cfr < 0.75) {
+            const fApt = info.bid * 100 + col, ilf = this.indoorLight(fApt, kf0, false);
+            const lit = ilf[0] > 0.5 && P.winGlow > 0.2;
+            if (lit) { r = 255 * Math.min(1, ilf[0]); g = 200 * ilf[1]; b = 140 * ilf[2]; buf[p] = 0xff000000 | (((b * kf + fb) | 0) << 16) | (((g * kf + fg) | 0) << 8) | ((r * kf + fr) | 0); zbuf[p] = z; continue; }
+            r = 60; g = 70; b = 84;
+          }
+        }
+      } else if (tex === 'stair') {
+        // ---- Treppenhaus: unten Ölfarbe, oben Kalk mit Flecken ----
+        if (zf < 1.5) { r = paint[0]; g = paint[1]; b = paint[2]; if (zf > 1.42) { r *= 0.7; g *= 0.7; b *= 0.7; } }
+        else { const st = hash2i((u * 2) | 0, (zrel * 2) | 0, 9) > 0.92 ? 0.85 : 1; r = 214 * st; g = 210 * st; b = 198 * st; }
+      } else {
+        // ---- Wohnung: Tapete, Fußleiste, Teppich an der Wand ----
+        r = WP[0]; g = WP[1]; b = WP[2];
+        // feine Muster: Streifen oder kleine Rauten, nur leicht abgesetzt
+        let a = 0;
+        if (wp & 1) { const q = u * 6; a = (q - Math.floor(q)) < 0.16 ? 0.28 : 0; }
+        else { const qu = u * 10 + (Math.floor(zrel * 10) & 1) * 0.5, qz = zrel * 10; a = Math.abs((qu - Math.floor(qu)) - 0.5) + Math.abs((qz - Math.floor(qz)) - 0.5) < 0.2 ? 0.2 : 0; }
+        if (a) { r += (WPA[0] - r) * a; g += (WPA[1] - g) * a; b += (WPA[2] - b) * a; }
+        if (zf < 0.12) { r = 90; g = 62; b = 40; }
+        if (info.carpet && zf > 0.7 && zf < 2.3 && uf > 0.06 && uf < 0.94) {
+          const du = Math.abs(uf - 0.5) * 2, dz = Math.abs((zf - 1.5) / 0.8);
+          const ring = Math.floor((du + dz) * 4 + hash2i(apt, 1, 1) * 2) % 4;
+          const CP = [[140, 30, 34], [190, 150, 90], [40, 30, 50], [170, 60, 50]][ring];
+          r = CP[0]; g = CP[1]; b = CP[2];
+          if (uf < 0.1 || uf > 0.9 || zf < 0.76 || zf > 2.24) { r = 200; g = 170; b = 110; }
+        }
+      }
+      if (inside) {
+        if (kf0 !== lastK) { lastK = kf0; il = this.indoorLight(apt, kf0, stair); }
+        lr = il[0] + lamp * 1.0; lg = il[1] + lamp * 0.75; lb = il[2] + lamp * 0.45;
+      } else if (top) { lr = otr; lg = otg; lb = otb; }
+      else { lr = owr; lg = owg; lb = owb; }
+      r = r * lr * kf + fr; g = g * lg * kf + fg; b = b * lb * kf + fb;
+      buf[p] = 0xff000000 | ((b > 255 ? 255 : b < 0 ? 0 : b | 0) << 16) | ((g > 255 ? 255 : g < 0 ? 0 : g | 0) << 8) | (r > 255 ? 255 : r < 0 ? 0 : r | 0);
+      zbuf[p] = z;
+    }
+  }
+
+  // ---- Filmkorn und Vignette (Plattenbau-Stimmung) ----
+  postGrain(t) {
+    const { W, H, buf } = this;
+    if (!this.vig || this.vig.length !== W * H) {
+      this.vig = new Float32Array(W * H);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const dx = (x / W - 0.5) * 1.6, dy = (y / H - 0.5) * 1.6;
+        this.vig[y * W + x] = 1 - Math.min(0.42, (dx * dx + dy * dy) * 0.38);
+      }
+    }
+    const seed = (t * 24) | 0, vig = this.vig;
+    for (let p = 0; p < W * H; p++) {
+      const o = buf[p], n = (hash2i(p, seed, 5) - 0.5) * 14, v = vig[p];
+      let r = (o & 255) * v + n, g = ((o >>> 8) & 255) * v + n, b = ((o >>> 16) & 255) * v + n;
+      // leicht entsättigen
+      const l = r * 0.3 + g * 0.59 + b * 0.11;
+      r = r + (l - r) * 0.18; g = g + (l - g) * 0.18; b = b + (l - b) * 0.12;
+      buf[p] = 0xff000000 | ((b > 255 ? 255 : b < 0 ? 0 : b | 0) << 16) | ((g > 255 ? 255 : g < 0 ? 0 : g | 0) << 8) | (r > 255 ? 255 : r < 0 ? 0 : r | 0);
     }
   }
 
@@ -2747,6 +3774,15 @@ class Renderer {
           const yb = horizon + (camZ - v.z[i]) * sc;
           if (yb - hPx >= H || yb < 0) continue;
 
+          if (kind >= KIND_INDOOR_MIN && kind <= KIND_INDOOR_MAX) {
+            // Möbel drinnen: Licht der Wohnung (Stockwerk aus der Höhe)
+            const ci = world.cells.get(((v.y[i] | 0) * world.N) + (v.x[i] | 0));
+            const il = ci ? this.indoorLight(ci.apt, Math.round((v.z[i] - ci.base) / FLOOR_H), false) : this.IL;
+            const f = 1 - Math.exp(-z * fogK), col = clamp(sxc | 0, 0, W - 1);
+            const kk = 0.86 * (1 - f);
+            this.blit(spr, sxc, yb, hPx, z, il[0] * kk, il[1] * kk, il[2] * kk, fogR[col] * f, fogG[col] * f, fogB[col] * f, z > fade0 ? (z - fade0) * fadeInv : 0, 0, emitK, 1 - f);
+            continue;
+          }
           let cs = 1;
           if (cShadow > 0) {
             const qx = (v.x[i] / CLOUD_SCALE + this.windX) | 0, qy = (v.y[i] / CLOUD_SCALE + this.windY) | 0;
@@ -2763,7 +3799,8 @@ class Renderer {
           const col = clamp(sxc | 0, 0, W - 1);
           const fade = z > fade0 ? (z - fade0) * fadeInv : 0;
           let sway = 0;
-          if (kind <= KIND_DECID) sway = Math.sin(t * 1.1 + v.x[i] * 0.37 + v.y[i] * 0.21) * hPx * 0.008 * windAmp;
+          if (kind <= KIND_DECID || kind === KIND_BIRCH || kind === KIND_POPLAR) sway = Math.sin(t * 1.1 + v.x[i] * 0.37 + v.y[i] * 0.21) * hPx * 0.008 * windAmp;
+          else if (kind === KIND_LAUNDRY) sway = Math.sin(t * 2.4 + v.x[i]) * hPx * 0.03 * windAmp;
           else if (kind === KIND_BANNER) sway = Math.sin(t * 3.3 + v.x[i]) * hPx * 0.05 * windAmp;
           this.blit(spr, sxc, yb, hPx, z, lr * (1 - f), lg * (1 - f), lb * (1 - f), fogR[col] * f, fogG[col] * f, fogB[col] * f, fade, sway, emitK, 1 - f);
         }
@@ -3095,6 +4132,8 @@ const Sound = {
     this.babble = loop(this.noise, 'bandpass', 1700, 1.4);
     this.rain = loop(this.noise, 'highpass', 1400, 0.5);
     this.rainLow = loop(this.brown, 'lowpass', 320, 0.5);
+    this.city = loop(this.brown, 'lowpass', 180, 0.4);          // fernes Stadtrauschen (nur Plattenbau)
+    this.nextDog = 0;
     this.nextBird = 0; this.nextCricket = 0; this.nextOwl = 0; this.nextFrog = 0;
     this.applyVolumes();
     this.ready = true;
@@ -3133,7 +4172,7 @@ const Sound = {
     this.master.gain.setTargetAtTime(this.muted ? 0 : this.vol.master, t, 0.05);
     this.natureBus.gain.setTargetAtTime(this.vol.nature, t, 0.05);
     this.sfxBus.gain.setTargetAtTime(this.vol.nature, t, 0.05);
-    this.musicBus.gain.setTargetAtTime(this.vol.music, t, 0.05);
+    this.musicBus.gain.setTargetAtTime(this.vol.music * (this.ducked ? 0.22 : 1), t, 0.05);
   },
 
   toggleMute() { this.muted = !this.muted; this.applyVolumes(); return this.muted; },
@@ -3151,7 +4190,15 @@ const Sound = {
     set(this.babble.g.gain, env.water * 0.035 * on * (0.6 + 0.4 * Math.sin(t * 1.3)));
     set(this.rain.g.gain, env.rain * 0.16 * on);
     set(this.rainLow.g.gain, env.rain * 0.12 * on);
+    set(this.city.g.gain, (this.mode === 'plattenbau' ? 0.09 * (1 - env.indoor * 0.6) : 0) * on);
     if (!env.active) return;
+    if (env.indoor) return;                     // drinnen keine Vögel und Grillen
+    if (this.mode === 'plattenbau') {
+      if (env.day > 0.3 && t > this.nextBird) { Math.random() < 0.55 ? this.crow() : this.pigeon(); this.nextBird = t + 2 + Math.random() * 6; }
+      if (t > this.nextDog) { if (this.nextDog > 0) this.dog(); this.nextDog = t + 25 + Math.random() * 60; }
+      if (env.night > 0.5 && env.rain < 0.5 && t > this.nextCricket) { this.cricket(); this.nextCricket = t + 0.4 + Math.random() * 1.4; }
+      return;
+    }
 
     // Vögel am Tag (mehr im Wald), Grillen und Frösche nachts, ab und zu eine Eule
     if (env.day > 0.4 && env.rain < 0.4 && t > this.nextBird) {
@@ -3269,6 +4316,95 @@ const Sound = {
       case 'dirt': this.burst(t, 0.08, 'lowpass', 900 * k, 0.6, 0.11); break;
       default: this.burst(t, 0.09, 'lowpass', 1300 * k, 0.6, 0.07);
     }
+  },
+
+  // ---- Plattenbau-Tiere ----
+  crow() {
+    const ctx = this.ctx, t = ctx.currentTime + 0.05, v = this.voice(Math.random() * 1.6 - 0.8, 0.06, 0.3);
+    const n = 1 + ((Math.random() * 3) | 0);
+    for (let i = 0; i < n; i++) {
+      const o = ctx.createOscillator(); o.type = 'sawtooth';
+      const t0 = t + i * 0.42;
+      o.frequency.setValueAtTime(520, t0); o.frequency.exponentialRampToValueAtTime(380, t0 + 0.28);
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1100; f.Q.value = 2.5;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.7, t0 + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
+      o.connect(f); f.connect(g); g.connect(v); o.start(t0); o.stop(t0 + 0.32);
+    }
+  },
+  pigeon() {
+    const t = this.ctx.currentTime + 0.05, v = this.voice(Math.random() * 1.2 - 0.6, 0.05, 0.15);
+    this.tone(v, 'sine', t, 0.25, 330, 300, 0.6); this.tone(v, 'sine', t + 0.32, 0.5, 360, 290, 0.6); this.tone(v, 'sine', t + 0.9, 0.3, 320, 300, 0.5);
+  },
+  dog() {
+    const ctx = this.ctx, t = ctx.currentTime + 0.05, v = this.voice(Math.random() * 1.6 - 0.8, 0.035, 0.6);
+    for (let i = 0; i < 2 + ((Math.random() * 3) | 0); i++) {
+      const t0 = t + i * 0.32, o = ctx.createOscillator(); o.type = 'square';
+      o.frequency.setValueAtTime(420, t0); o.frequency.exponentialRampToValueAtTime(240, t0 + 0.15);
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 800; f.Q.value = 1.5;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.6, t0 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+      o.connect(f); f.connect(g); g.connect(v); o.start(t0); o.stop(t0 + 0.2);
+    }
+  },
+
+  // ---- Rauchen ----
+  smokeSound(type) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime + 0.005;
+    if (type === 'light') { this.tone(this.sfxBus, 'square', t, 0.012, 2400, 2000, 0.05); this.burst(t + 0.05, 0.45, 'bandpass', 1300, 0.7, 0.06); }
+    else if (type === 'inhale') { for (let i = 0; i < 9; i++) this.burst(t + Math.random() * 1.3, 0.012, 'highpass', 4000, 0.7, 0.025); this.burst(t, 1.2, 'bandpass', 600, 0.5, 0.012); }
+    else if (type === 'exhale') this.burst(t, 1.5, 'lowpass', 900, 0.5, 0.05);
+    else if (type === 'out') this.burst(t, 0.3, 'highpass', 3000, 0.6, 0.05);
+  },
+
+  // ---- Gitarre: Saiten → (Verzerrer) → Chorus → Hall ----
+  ensureGuitar() {
+    if (this.gtr) return this.gtr;
+    const ctx = this.ctx;
+    const clean = ctx.createGain(), dist = ctx.createGain(), sum = ctx.createGain();
+    const pre = ctx.createGain(); pre.gain.value = 4;
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(2048);
+    for (let i = 0; i < 2048; i++) { const x = i / 1024 - 1; curve[i] = Math.tanh(x * 3) * 0.6; }
+    shaper.curve = curve; shaper.oversample = '2x';
+    const tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 3000;
+    dist.connect(pre); pre.connect(shaper); shaper.connect(tone); tone.connect(sum);
+    clean.connect(sum);
+    // Chorus: leicht schwankende Verzögerung, gemischt mit dem trockenen Signal
+    const dly = ctx.createDelay(0.05); dly.delayTime.value = 0.014;
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.9;
+    const depth = ctx.createGain(); depth.gain.value = 0.004;
+    lfo.connect(depth); depth.connect(dly.delayTime); lfo.start();
+    const wet = ctx.createGain(); wet.gain.value = 0.7;
+    const out = ctx.createGain(); out.gain.value = 0.9;
+    sum.connect(out); sum.connect(dly); dly.connect(wet); wet.connect(out);
+    out.connect(this.sfxBus);
+    const send = ctx.createGain(); send.gain.value = 0.4; out.connect(send); send.connect(this.reverb);
+    this.gtr = { clean, dist };
+    return this.gtr;
+  },
+  guitarNote(midi, delay, vel, distOn) {
+    if (!this.ready) return;
+    const g = this.ensureGuitar(), ctx = this.ctx;
+    const src = ctx.createBufferSource(); src.buffer = GenTrack.pluckBuf(ctx, midi);
+    const v = ctx.createGain(); v.gain.value = vel * (distOn ? 0.5 : 1.1);
+    src.connect(v); v.connect(distOn ? g.dist : g.clean);
+    src.start(ctx.currentTime + 0.005 + delay);
+  },
+  drum(type, time) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = Math.max(time, ctx.currentTime);
+    if (type === 'kick') {
+      const o = ctx.createOscillator(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.14);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+      o.connect(g); g.connect(this.sfxBus); o.start(t); o.stop(t + 0.35);
+    } else if (type === 'snare') {
+      this.burst(t, 0.16, 'bandpass', 1900, 0.7, 0.18); this.tone(this.sfxBus, 'triangle', t, 0.08, 200, 160, 0.1);
+    } else this.burst(t, type === 'hatAcc' ? 0.05 : 0.03, 'highpass', 7500, 0.7, type === 'hatAcc' ? 0.05 : 0.03);
+  },
+  duckMusic(on) {
+    this.ducked = on;
+    if (this.ready) this.musicBus.gain.setTargetAtTime(this.vol.music * (on ? 0.22 : 1), this.ctx.currentTime, 0.2);
+    if (typeof Music !== 'undefined') Music.updateVolume();
   },
 
   // ---- Angeln ----
@@ -3404,6 +4540,73 @@ class GenTrack {
   }
 }
 
+// ---- Instrumente für Post-Punk: Drumcomputer, Chorus-Bass, Synth ----
+GenTrack.prototype.kick = function (time) {
+  const ctx = this.ctx, o = ctx.createOscillator();
+  o.frequency.setValueAtTime(130, time); o.frequency.exponentialRampToValueAtTime(42, time + 0.12);
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, time); g.gain.exponentialRampToValueAtTime(0.55, time + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, time + 0.3);
+  o.connect(g); g.connect(this.out); o.start(time); o.stop(time + 0.32);
+};
+GenTrack.prototype.noiseHit = function (time, dur, type, freq, vel) {
+  const ctx = this.ctx;
+  if (!GenTrack.noise) { const n = ctx.sampleRate, b = ctx.createBuffer(1, n, n), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; GenTrack.noise = b; }
+  const src = ctx.createBufferSource(); src.buffer = GenTrack.noise;
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = 0.8;
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, time); g.gain.exponentialRampToValueAtTime(vel, time + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+  src.connect(f); f.connect(g); g.connect(this.out); src.start(time, Math.random() * 0.5); src.stop(time + dur + 0.02);
+};
+GenTrack.prototype.bass = function (midi, time, dur, vel) {
+  const ctx = this.ctx, lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700; lp.Q.value = 3;
+  lp.frequency.setValueAtTime(1400, time); lp.frequency.exponentialRampToValueAtTime(380, time + dur);
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, time); g.gain.exponentialRampToValueAtTime(vel, time + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+  lp.connect(g); g.connect(this.out);
+  for (const det of [-9, 9]) { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = midiFreq(midi); o.detune.value = det; o.connect(lp); o.start(time); o.stop(time + dur + 0.02); }
+};
+GenTrack.prototype.lead = function (midi, time, dur, vel) {
+  const ctx = this.ctx, o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = midiFreq(midi);
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1600;
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, time); g.gain.exponentialRampToValueAtTime(vel, time + 0.02); g.gain.setValueAtTime(vel, time + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+  o.connect(lp); lp.connect(g); g.connect(this.out); o.start(time); o.stop(time + dur + 0.02);
+};
+
+const GEN_TRACKS_PB = [
+  new GenTrack('Панелька (Post-Punk)', 200, () => {
+    // E-Moll, 132 BPM: Em C G D – treibende Achtel im Bass, Drumcomputer, sparsame Synth-Melodie
+    const prog = [40, 36, 43, 38], mel = [64, 67, 71, 69, 67, 64, 62, 59];
+    let m = 0;
+    return {
+      schedule(time, step, tr) {
+        const e = 60 / 132 / 2, s = step % 16, bar = Math.floor(step / 16) % 4, root = prog[bar];
+        if (s === 0 || s === 8 || s === 5 || s === 11) tr.kick(time);
+        if (s === 4 || s === 12) tr.noiseHit(time, 0.16, 'bandpass', 1800, 0.22);
+        tr.noiseHit(time, 0.03, 'highpass', 7500, s % 2 ? 0.03 : 0.06);
+        tr.bass(root + (s % 2 ? 12 : 0), time, e * 0.9, 0.16);
+        if (step >= 32 && (s === 0 || s === 6 || s === 10) && tr.rnd() < 0.8) {
+          m = (m + 1 + ((tr.rnd() * 2) | 0)) % mel.length;
+          tr.lead(mel[m] + (bar === 1 ? -4 : 0), time, e * (s === 6 ? 3 : 2), 0.05);
+        }
+        return e;
+      },
+    };
+  }),
+  new GenTrack('Холодный двор (Coldwave)', 220, () => {
+    // A-Moll, 108 BPM: Am F C G, Chorus-Gitarre (Zupfen) über dumpfem Beat und Fläche
+    const prog = [[45, 57, 60, 64], [41, 57, 60, 65], [48, 55, 60, 64], [43, 55, 59, 62]];
+    return {
+      schedule(time, step, tr) {
+        const e = 60 / 108 / 2, s = step % 16, bar = Math.floor(step / 16) % 4, c = prog[bar];
+        if (s === 0 || s === 10) tr.kick(time);
+        if (s === 4 || s === 12) tr.noiseHit(time, 0.22, 'bandpass', 1500, 0.15);
+        if (s % 2 === 0) tr.noiseHit(time, 0.025, 'highpass', 8000, 0.03);
+        if (s === 0) { tr.pad([c[1], c[2], c[3]], time, e * 15, 0.12, 900); tr.bass(c[0], time, e * 7, 0.14); }
+        if (s === 8) tr.bass(c[0], time, e * 7, 0.12);
+        if (step >= 16) tr.pluck(c[1 + (s % 3)] + 12, time, 0.22);
+        return e;
+      },
+    };
+  }),
+];
+
 const GEN_TRACKS = [
   new GenTrack('Lagerfeuer (Laute)', 200, () => {
     // D-Dorisch, Akkorde: Dm C G Dm | Am C G Dm
@@ -3491,10 +4694,16 @@ const Music = {
   tracks: [], idx: 0, playing: false, mode: 'list',
   el: null, gen: null, onChange: null,
 
-  async init() {
+  mode: 'medieval',
+
+  async init(mode) {
+    if (mode) this.mode = mode;
     this.tracks = [];
-    // 1. eingebettete Songs (nur im lokalen Build "weitland-musik.html" bzw. music/playlist.js)
-    for (const s of (window.WEITLAND_SONGS || [])) this.tracks.push({ id: 'emb:' + s.name, name: s.name, kind: 'file', src: s.src });
+    // 1. eingebettete Songs (nur im lokalen Build "weitland-musik.html" bzw. music/playlist.js), passend zum Modus
+    for (const s of (window.WEITLAND_SONGS || [])) {
+      if (s.mode && s.mode !== this.mode) continue;
+      this.tracks.push({ id: 'emb:' + s.name, name: s.name, kind: 'file', src: s.src });
+    }
     // 2. eigene Songs aus dem Browser-Speicher
     try {
       const recs = await MusicDB.all();
@@ -3502,7 +4711,7 @@ const Music = {
       for (const r of recs) this.tracks.push({ id: r.id, name: r.name, kind: 'user', blob: r.blob });
     } catch (e) { /* kein Speicher verfügbar */ }
     // 3. erzeugte Stücke
-    GEN_TRACKS.forEach((g, i) => this.tracks.push({ id: 'gen:' + i, name: g.name, kind: 'gen', gen: g }));
+    (this.mode === 'plattenbau' ? GEN_TRACKS_PB : GEN_TRACKS).forEach((g, i) => this.tracks.push({ id: 'gen:' + this.mode + i, name: g.name, kind: 'gen', gen: g }));
     if (this.idx >= this.tracks.length) this.idx = 0;
   },
 
@@ -3552,7 +4761,7 @@ const Music = {
     if (this.onChange) this.onChange(tr);
   },
 
-  elVolume() { return Sound.muted ? 0 : clamp(Sound.vol.master * Sound.vol.music, 0, 1); },
+  elVolume() { return Sound.muted ? 0 : clamp(Sound.vol.master * Sound.vol.music * (Sound.ducked ? 0.22 : 1), 0, 1); },
   updateVolume() { if (this.el) this.el.volume = this.elVolume(); },
 
   stopSource() {
@@ -3674,7 +4883,7 @@ const Net = {
       const color = clamp(msg.color | 0, 0, PLAYER_COLORS.length - 1);
       this.others.set(conn.peer, { name, color, x: 0, y: 0, f: 0, yaw: 0, l: 0, fly: false, seen: performance.now(), fresh: true });
       const g = this.getGame();
-      conn.send({ t: 'welcome', id: conn.peer, seed: g.seed, time: g.time, day: g.day, host: { x: g.x, y: g.y, f: g.f }, hostName: this.name });
+      conn.send({ t: 'welcome', id: conn.peer, seed: g.seed, mode: g.mode, version: g.version, time: g.time, day: g.day, host: { x: g.x, y: g.y, f: g.f }, hostName: this.name });
       this.broadcast({ t: 'sys', text: `${name} ist beigetreten` }, null, true);
       if (this.onPlayers) this.onPlayers();
     } else if (msg.t === 'st') {
@@ -4056,6 +5265,292 @@ function drawFishIcon(canvas, f, unknown) {
 </script>
 <script>
 'use strict';
+/* Aktivitäten im Plattenbau: am Balkon eine rauchen und E-Gitarre spielen.
+   Beide werden mit E an einem Objekt gestartet (Aschenbecher, Gitarrenständer). Während einer
+   Aktivität kann man sich umschauen, aber nicht laufen; Esc oder W/A/S/D beendet sie. */
+
+const GUITAR_CHORDS = [
+  ['Em', [40, 47, 52, 55, 59, 64]], ['C', [48, 52, 55, 60, 64]], ['G', [43, 47, 50, 55, 59, 67]], ['D', [50, 57, 62, 66]],
+  ['Am', [45, 52, 57, 60, 64]], ['F', [41, 48, 53, 57, 60, 65]], ['Bm', [47, 54, 59, 62, 66]], ['A', [45, 52, 57, 61, 64]],
+];
+const GUITAR_NOTES = { KeyA: 64, KeyS: 67, KeyD: 69, KeyF: 71, KeyG: 74, KeyH: 76, KeyJ: 79, KeyK: 81, KeyL: 83 };
+
+const Activity = {
+  cur: null, near: null, onMsg: null,
+  smoke: null, guitar: null, puffs: [],
+
+  // Objekt in Reichweite und ungefähr vor einem?
+  findNear(world, p) {
+    if (!world.interact || !world.interact.length || p.fly) return null;
+    const fx = Math.cos(p.yaw), fy = Math.sin(p.yaw);
+    let best = null, bd = 1e9;
+    for (const it of world.interact) {
+      const dx = it.x - p.x, dy = it.y - p.y, d = Math.hypot(dx, dy);
+      if (d > 1.8 || Math.abs(it.z - p.feet) > 1.3) continue;
+      if (d > 0.4 && (dx * fx + dy * fy) / d < 0.3) continue;
+      if (d < bd) { bd = d; best = it; }
+    }
+    return best;
+  },
+
+  hint() {
+    if (this.cur === 'smoke') return this.smoke.done ? '' : '<b>E halten</b> = ziehen · loslassen = ausatmen · <b>Esc</b> = ausdrücken';
+    if (this.cur === 'guitar') return '🎸 <b>1–8</b> Akkorde · <b>A–L</b> Töne · <b>Leertaste</b> anschlagen · <b>B</b> Beat ' +
+      (this.guitar.drums ? 'an' : 'aus') + ' · <b>V</b> ' + (this.guitar.dist ? 'Verzerrer' : 'Clean') + ' · <b>E</b> weglegen';
+    if (this.near) return this.near.kind === 'smoke' ? '<b>E</b> – eine rauchen' : '<b>E</b> – Gitarre spielen';
+    return null;
+  },
+
+  start(it) {
+    this.cur = it.kind;
+    if (it.kind === 'smoke') {
+      this.smoke = { inhale: 0, length: 1, drags: 0, ember: 0.4, holding: false, wisp: 0, done: false, it };
+      Sound.smokeSound('light');
+      this.msg('Du zündest dir eine an.');
+    } else {
+      this.guitar = { chord: 0, strum: 0, drums: false, dist: false, nextBeat: 0, step: 0, flash: 0, fret: 0, it };
+      Sound.duckMusic(true);
+      this.msg('Du nimmst die Gitarre.');
+    }
+  },
+
+  stop(silent) {
+    if (this.cur === 'guitar') { Sound.duckMusic(false); this.guitar.drums = false; }
+    if (this.cur === 'smoke' && !silent) { Sound.smokeSound('out'); this.msg('Du drückst sie im Aschenbecher aus.'); }
+    this.cur = null;
+  },
+
+  msg(t) { if (this.onMsg) this.onMsg(t); },
+
+  // E / Klick gedrückt (Flanke)
+  press() {
+    if (!this.cur && this.near) { this.start(this.near); return true; }
+    if (this.cur === 'guitar') { this.stop(); this.msg('Du stellst die Gitarre zurück in den Ständer.'); return true; }
+    return !!this.cur;
+  },
+
+  update(dt, I, cam) {
+    if (!this.cur) return;
+    if (I.consume('Escape') || I.down('KeyW', 'KeyA', 'KeyS', 'KeyD') && this.cur === 'smoke') { this.stop(); return; }
+    if (this.cur === 'smoke') this.updateSmoke(dt, I, cam);
+    else this.updateGuitar(dt, I);
+  },
+
+  // ---------------- Rauchen ----------------
+  updateSmoke(dt, I, cam) {
+    const s = this.smoke;
+    const hold = I.down('KeyE', 'Mouse0');
+    if (hold && s.length > 0.2) {
+      if (!s.holding) { s.holding = true; Sound.smokeSound('inhale'); }
+      s.inhale = Math.min(1, s.inhale + dt / 1.4);
+      s.length -= dt * 0.035;
+      s.ember = Math.min(1, s.ember + dt * 3);
+    } else {
+      if (s.holding) {
+        s.holding = false;
+        if (s.inhale > 0.2) { s.drags++; s.exhale = 1.6 * s.inhale; Sound.smokeSound('exhale'); }
+      }
+      s.inhale = Math.max(0, s.inhale - dt * 1.5);
+      s.ember += (0.38 + Math.sin(performance.now() / 180) * 0.05 - s.ember) * Math.min(1, dt * 4);
+    }
+    // Ausatmen: Rauchwolken vor dem Gesicht
+    if (s.exhale > 0) {
+      s.exhale -= dt;
+      s.puffT = (s.puffT || 0) - dt;
+      if (s.puffT <= 0 && this.puffs.length < 60) {
+        s.puffT = 0.07;
+        const fx = Math.cos(cam.yaw), fy = Math.sin(cam.yaw);
+        this.puffs.push({ x: cam.x + fx * 0.45, y: cam.y + fy * 0.45, z: cam.z - 0.15,
+          vx: fx * (0.6 + Math.random() * 0.4) + (Math.random() - 0.5) * 0.25, vy: fy * (0.6 + Math.random() * 0.4) + (Math.random() - 0.5) * 0.25,
+          vz: 0.08 + Math.random() * 0.12, age: 0, life: 2.2 + Math.random() * 1.2, size: 0.05 });
+      }
+    }
+    // dünner Rauchfaden von der Glut
+    s.wisp -= dt;
+    if (s.wisp <= 0 && !s.holding) {
+      s.wisp = 0.12;
+      const fx = Math.cos(cam.yaw), fy = Math.sin(cam.yaw), rx = -fy, ry = fx;
+      this.puffs.push({ x: cam.x + fx * 0.5 + rx * 0.22, y: cam.y + fy * 0.5 + ry * 0.22, z: cam.z - 0.35, vx: 0, vy: 0, vz: 0.25, age: 0, life: 2, size: 0.02, thin: true });
+    }
+    if (s.length <= 0.2 && !s.holding && !s.done) {
+      s.done = true;
+      setTimeout(() => { if (this.cur === 'smoke') this.stop(); }, 900);
+    }
+  },
+
+  updatePuffs(dt, wind) {
+    for (const p of this.puffs) {
+      p.age += dt;
+      p.x += (p.vx + wind * 0.4) * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+      p.vx *= 1 - dt * 0.8; p.vy *= 1 - dt * 0.8;
+      p.size += dt * (p.thin ? 0.04 : 0.13);
+    }
+    this.puffs = this.puffs.filter(p => p.age < p.life);
+  },
+
+  // ---------------- Gitarre ----------------
+  updateGuitar(dt, I) {
+    const g = this.guitar;
+    for (let n = 1; n <= 8; n++) if (I.consume('Digit' + n) || I.consume('Numpad' + n)) { g.chord = n - 1; this.strum(); }
+    if (I.consume('Space')) this.strum();
+    for (const code in GUITAR_NOTES) if (I.consume(code)) {
+      Sound.guitarNote(GUITAR_NOTES[code], 0, 0.6, g.dist);
+      g.strum = Math.max(g.strum, 0.5); g.fret = (GUITAR_NOTES[code] - 60) / 24;
+    }
+    if (I.consume('KeyB')) { g.drums = !g.drums; g.nextBeat = 0; g.step = 0; }
+    if (I.consume('KeyV')) g.dist = !g.dist;
+    g.strum = Math.max(0, g.strum - dt * 1.6);
+    g.flash = Math.max(0, g.flash - dt);
+    // Post-Punk-Drumcomputer: 132 BPM, Achtel
+    if (g.drums && Sound.ready) {
+      const now = Sound.ctx.currentTime, eighth = 60 / 132 / 2;
+      if (g.nextBeat < now) g.nextBeat = now + 0.05;
+      while (g.nextBeat < now + 0.15) {
+        const s = g.step % 16;
+        if (s === 0 || s === 8 || s === 5 || s === 11) Sound.drum('kick', g.nextBeat);
+        if (s === 4 || s === 12) Sound.drum('snare', g.nextBeat);
+        Sound.drum(s % 2 ? 'hat' : 'hatAcc', g.nextBeat);
+        g.nextBeat += eighth; g.step++;
+      }
+    }
+  },
+
+  strum() {
+    const g = this.guitar, notes = GUITAR_CHORDS[g.chord][1];
+    notes.forEach((m, i) => Sound.guitarNote(m, i * 0.014, 0.42, g.dist));
+    g.strum = 1; g.flash = 0.6; g.fret = g.chord / 8;
+  },
+
+  // ---------------- Bild: Hand mit Zigarette, Gitarre, Rauch ----------------
+  draw(R, cam, S, t) {
+    const { W, H, buf, zbuf, focal, horizon, fx, fy, rx, ry } = R;
+    const light = clamp(S.amb[0] * 1.2 + S.sunLight[0] * 0.3 + (R.P.winGlow > 0 ? 0.35 : 0), 0.35, 1.15);
+    const put = (x, y, r, g, b) => {
+      x |= 0; y |= 0;
+      if (x < 0 || y < 0 || x >= W || y >= H) return;
+      buf[y * W + x] = 0xff000000 | ((clamp(b, 0, 255) | 0) << 16) | ((clamp(g, 0, 255) | 0) << 8) | (clamp(r, 0, 255) | 0);
+    };
+    const blend = (x, y, r, g, b, a) => {
+      x |= 0; y |= 0;
+      if (x < 0 || y < 0 || x >= W || y >= H) return;
+      const p = y * W + x, o = buf[p];
+      const R0 = o & 255, G0 = (o >>> 8) & 255, B0 = (o >>> 16) & 255;
+      buf[p] = 0xff000000 | (((B0 + (b - B0) * a) | 0) << 16) | (((G0 + (g - G0) * a) | 0) << 8) | ((R0 + (r - R0) * a) | 0);
+    };
+
+    // Rauchwolken (Weltkoordinaten, tiefengeprüft)
+    for (const p of this.puffs) {
+      const dx = p.x - cam.x, dy = p.y - cam.y, z = dx * fx + dy * fy;
+      if (z < 0.15) continue;
+      const sx = W * 0.5 + (dx * rx + dy * ry) * focal / z, sy = horizon + (cam.z - p.z) * focal / z;
+      const rad = Math.min(22, Math.max(1, p.size * focal / z));
+      const a0 = (1 - p.age / p.life) * (p.thin ? 0.3 : 0.26);
+      const c = 200 * light + 20;
+      for (let yy = -rad; yy <= rad; yy++) for (let xx = -rad; xx <= rad; xx++) {
+        const d = Math.hypot(xx, yy) / rad;
+        if (d > 1) continue;
+        const px = (sx + xx) | 0, py = (sy + yy) | 0;
+        if (px < 0 || py < 0 || px >= W || py >= H || zbuf[py * W + px] < z) continue;
+        if (BAYER4[((py & 3) << 2) | (px & 3)] > (1 - d) * 1.4) continue;
+        blend(px, py, c, c, c * 1.02, a0);
+      }
+    }
+
+    const s = H / 200;                         // Maßstab: alles ist für 200 Pixel Bildhöhe gezeichnet
+    if (this.cur === 'smoke' && this.smoke) {
+      const sm = this.smoke, k = sm.inhale;
+      // Hand wandert beim Ziehen Richtung Mund
+      const hx = lerp(W * 0.79, W * 0.58, k), hy = lerp(H * 0.89, H * 0.84, k);
+      const hl = Math.max(0.88, light);
+      const skin = [214 * hl, 168 * hl, 134 * hl];
+      for (let y = -14; y < 30; y++) for (let x = -12; x < 14; x++) {
+        if ((x * x) / 160 + ((y - 8) * (y - 8)) / 420 > 1) continue;
+        put(hx + x * s, hy + y * s, skin[0] * (x < -6 ? 0.85 : 1), skin[1] * (x < -6 ? 0.85 : 1), skin[2]);
+        if (s > 1.4) put(hx + x * s + 1, hy + y * s, skin[0], skin[1], skin[2]);
+      }
+      // Zigarette: Filter, Papier, Glut
+      const len = 34 * sm.length;
+      for (let q = 0; q < len + 10; q++) for (let w = 0; w < 3; w++) {
+        const x = hx - 6 * s - q * s * 0.9, y = hy - 10 * s - q * s * 0.35 + w * s * 0.8;
+        const filt = q < 10;
+        if (q >= len + 8) {
+          const e = sm.ember;
+          put(x, y, 255, 110 + e * 120, 30 + e * 40);
+        } else put(x, y, (filt ? 214 : 240) * hl, (filt ? 146 : 236) * hl, (filt ? 86 : 228) * hl);
+      }
+      // Glut leuchtet etwas in die Umgebung
+      const ex = hx - 6 * s - (len + 9) * s * 0.9, ey = hy - 10 * s - (len + 9) * s * 0.35;
+      for (let yy = -6; yy <= 6; yy++) for (let xx = -6; xx <= 6; xx++) {
+        const d = Math.hypot(xx, yy) / 6;
+        if (d < 1) { const px = (ex + xx * s) | 0, py = (ey + yy * s) | 0; if (px >= 0 && py >= 0 && px < W && py < H) { const o = buf[py * W + px], a = (1 - d) * (1 - d) * sm.ember * 0.5; buf[py * W + px] = 0xff000000 | (((((o >>> 16) & 255) * (1 - a) + 40 * a) | 0) << 16) | (((((o >>> 8) & 255) * (1 - a) + 120 * a) | 0) << 8) | (((o & 255) * (1 - a) + 255 * a) | 0); } }
+      }
+    }
+
+    if (this.cur === 'guitar' && this.guitar) this.drawGuitar(R, s, light, put, t);
+  },
+
+  // Die Ibanez in der Hand: schräg von unten rechts nach oben links
+  drawGuitar(R, s, light, put, t) {
+    const { W, H } = R, g = this.guitar;
+    const cx = W * 0.7, cy = H * 0.9;
+    const ang = -2.88, ax = Math.cos(ang), ay = Math.sin(ang), bx = -ay, by = ax;   // a: Halsrichtung, b: quer
+    const L = 118 * s, Wd = 54 * s;
+    const blk = [26 * light, 26 * light, 32 * light], purp = [112 * light, 60 * light, 156 * light];
+    const x0 = Math.max(0, (cx - L * 1.7) | 0), x1 = Math.min(W - 1, (cx + L) | 0), y0 = Math.max(0, (cy - L * 0.9) | 0), y1 = H - 1;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const dx = x - cx, dy = y - cy;
+      const sa = (dx * ax + dy * ay) / L, sb = (dx * bx + dy * by) / Wd;   // sa: entlang, sb: quer
+      // Korpus: unterer und oberer Bogen, spitze Hörner
+      const lower = ((sa + 0.05) / 0.42) ** 2 + (sb / 1.0) ** 2 < 1;
+      const upper = ((sa - 0.38) / 0.24) ** 2 + (sb / 0.8) ** 2 < 1;
+      const hornA = sa > 0.38 && sa < 0.62 && sb > 0.35 && sb < 0.75 - (sa - 0.38) * 1.2;
+      const hornB = sa > 0.42 && sa < 0.58 && sb < -0.3 && sb > -0.62 + (sa - 0.42) * 1.6;
+      if (lower || upper || hornA || hornB) {
+        let c = blk;
+        if (Math.abs(sb + 0.55) < 0.12 && Math.abs(sa - 0.35) < 0.09) c = [6, 6, 8];               // Griffloch
+        else if (sa > -0.05 && sa < 0.42 && sb > -0.45 && sb < 0.5 && !(sa > 0.3 && sb < -0.2)) {
+          c = purp;                                                                             // Schlagbrett
+          if (hash2i(x >> 1, y >> 1, 9) > 0.8) c = [150 * light, 100 * light, 196 * light];
+        }
+        if (Math.abs(sb) < 0.34 && (Math.abs(sa - 0.32) < 0.035 || Math.abs(sa - 0.06) < 0.035)) c = [200 * light, 200 * light, 208 * light];   // Humbucker
+        if (Math.abs(sb) < 0.28 && Math.abs(sa - 0.19) < 0.018) c = [60, 60, 64];                    // Single Coil
+        if (Math.abs(sb) < 0.36 && Math.abs(sa + 0.1) < 0.05) c = [52 * light, 52 * light, 58 * light];  // Vibrato
+        if (sa < -0.18 && sa > -0.36 && sb > 0.35 && sb < 0.72 && hash2i(x >> 1, (y >> 1) + 3, 5) > 0.55) c = [236 * light, 236 * light, 230 * light];   // Schriftzug
+        if (Math.abs(sb - 0.9) < 0.1) c = [70 * light, 70 * light, 80 * light];                       // Glanzkante
+        put(x, y, c[0], c[1], c[2]);
+        continue;
+      }
+      // Hals mit Griffbrett, Bünden und Ranken-Inlays
+      if (sa > 0.55 && Math.abs(sb) < 0.13) {
+        let c = [110 * light, 48 * light, 40 * light];
+        const fr = (sa - 0.55) * 14;
+        if ((fr - Math.floor(fr)) < 0.08) c = [190 * light, 190 * light, 196 * light];
+        else if (Math.floor(fr) % 2 === 1 && Math.abs(sb - Math.sin(sa * 30) * 0.06) < 0.04) c = [236 * light, 234 * light, 222 * light];
+        put(x, y, c[0], c[1], c[2]);
+      }
+    }
+    // Saiten (schwingen nach dem Anschlag)
+    for (let k = 0; k < 6; k++) {
+      const off = (k - 2.5) * 0.04;
+      for (let q = -0.1; q < 1.6; q += 0.004) {
+        const vib = g.strum * Math.sin(t * 90 + k * 1.7 + q * 20) * 0.02 * Math.sin(Math.min(1, (q + 0.1) / 1.7) * Math.PI);
+        const x = cx + ax * q * L + bx * (off + vib) * Wd, y = cy + ay * q * L + by * (off + vib) * Wd;
+        put(x, y, 220 * light, 220 * light, 214 * light);
+      }
+    }
+    // Greifhand am Hals (Position je Akkord) und Anschlaghand über den Tonabnehmern
+    const skin = [214 * light, 168 * light, 134 * light];
+    const hand = (qa, qb, rad) => {
+      const hx = cx + ax * qa * L + bx * qb * Wd, hy = cy + ay * qa * L + by * qb * Wd;
+      for (let y = -rad; y <= rad; y++) for (let x = -rad; x <= rad; x++) if (x * x + y * y <= rad * rad) put(hx + x, hy + y, skin[0], skin[1], skin[2]);
+    };
+    hand(0.85 + g.fret * 0.4, -0.22, 9 * s);
+    hand(0.18 + Math.sin(t * 20) * g.strum * 0.05, 0.42, 8 * s);
+  },
+};
+</script>
+<script>
+'use strict';
 /* Eingabe: Tastatur, Maus (Pointer Lock) und Trackpad (Zwei-Finger-Wischen ohne Klick).
    Tasten werden über e.code gelesen, damit QWERTZ und QWERTY gleich funktionieren. */
 
@@ -4156,7 +5651,8 @@ class Player {
     this.yaw = save ? save.yaw : (world.spawn.yaw ?? -Math.PI / 2);
     this.pitch = save ? save.pitch : 0;
     this.fly = save ? !!save.fly : false;
-    const st = standHeight(world, this.x, this.y, save && save.feet != null ? save.feet : 1e4);
+    const f0 = save && save.feet != null ? save.feet : (world.spawn.feet ?? 1e4);
+    const st = standHeight(world, this.x, this.y, f0);
     this.feet = save && save.feet != null ? save.feet : Math.max(st.h, 0);
     this.vz = 0;
     this.vx = 0; this.vy = 0;
@@ -4178,7 +5674,8 @@ class Player {
     if (SEA_LEVEL - st.h > MAX_WADE_DEPTH) return false;                   // zu tief: später Schwimmen/Boote
     if (this.onGround && st.h - fromFeet > 0.55 + stepLen * 1.6) return false; // zu steil oder eine Wand
     if (st.h + PLAYER_H > st.ceil) return false;                            // Kopf stößt an (Brücke, niedriger Bogen)
-    if (vegetationBlocks(this.world, x, y, 0.25)) return false;
+    // Hindernisse blockieren – außer man steckt schon drin, dann darf man heraus
+    if (vegetationBlocks(this.world, x, y, 0.25, st.h) && !vegetationBlocks(this.world, this.x, this.y, 0.25, this.feet)) return false;
     return true;
   }
 
@@ -4208,7 +5705,8 @@ class Player {
     if (I.pressed.has('KeyS')) this.autorun = false;
     let fwd = (I.down('KeyW') ? 1 : 0) - (I.down('KeyS') ? 1 : 0);
     if (this.autorun && fwd === 0) fwd = 1;
-    const str = (I.down('KeyD') ? 1 : 0) - (I.down('KeyA') ? 1 : 0);
+    let str = (I.down('KeyD') ? 1 : 0) - (I.down('KeyA') ? 1 : 0);
+    if (this.frozen) { fwd = 0; str = 0; this.autorun = false; }       // während Rauchen/Gitarre
     const run = I.down('ShiftLeft', 'ShiftRight');
 
     const here = standHeight(this.world, this.x, this.y, this.feet);
@@ -4245,7 +5743,7 @@ class Player {
       this.vz = 0;
       this.onGround = this.feet <= Math.max(g, SEA_LEVEL) + 0.01;
     } else {
-      if (this.onGround && I.down('Space') && SEA_LEVEL - g < 0.5) { this.vz = 6.2; this.onGround = false; }
+      if (this.onGround && !this.frozen && I.down('Space') && SEA_LEVEL - g < 0.5) { this.vz = 6.2; this.onGround = false; }
       this.vz -= 20 * dt;
       this.feet += this.vz * dt;
       if (this.feet + PLAYER_H > st.ceil && this.vz > 0) { this.vz = 0; this.feet = st.ceil - PLAYER_H; }
@@ -4787,7 +6285,7 @@ const UI = {
     const p = game.player, tags = [];
     if (p.autorun) tags.push('AUTOLAUF');
     if (p.fly) tags.push('FLIEGEN');
-    if (game.lantern > 0.5) tags.push('LATERNE');
+    if (game.lantern > 0.5) tags.push(game.world && game.world.mode === 'plattenbau' ? 'TASCHENLAMPE' : 'LATERNE');
     if (p.inWater) tags.push('WATEN');
     if (game.weather && game.weather.rain > 0.3) tags.push('REGEN');
     $('status').textContent = tags.join('  ·  ');
@@ -4809,7 +6307,13 @@ const UI = {
 'use strict';
 /* Spielablauf: Menü, Welt laden, Hauptschleife, Tageszeit und Zeitraffer, Wetter, Geräusche, Speichern. */
 
-const SAVE_KEY = 'weitland.save.v1';
+// Bei Änderungen an der Weltgenerierung erhöhen: Mitspieler mit anderer Version bekommen eine andere Welt
+const GAME_VERSION = '2026.10.05-1';
+const SAVE_KEYS = { medieval: 'weitland.save.v1', plattenbau: 'weitland.save.plattenbau.v1' };
+const MODE_INFO = {
+  medieval: { title: 'WEITLAND', sub: 'ein ruhiges Land zum Erkunden', start: 9 },
+  plattenbau: { title: 'МИКРОРАЙОН', sub: 'graue Blocks, warme Fenster', start: 16.5 },
+};
 
 const Game = {
   state: 'menu',            // menu | loading | play | pause
@@ -4820,20 +6324,21 @@ const Game = {
   lantern: 0, lanternOverride: null, lastAutoLantern: null,
   mapOpen: false, hudVisible: true, debug: false,
   fps: 60, revealTimer: 0, saveTimer: 0, envTimer: 0,
-  env: { water: 0, forest: 0 }, place: null, lamps: [],
+  env: { water: 0, forest: 0, indoor: 0 }, place: null, lamps: [],
+  mode: 'medieval',
 };
 
 const view = document.getElementById('view');
 const mapCanvas = document.getElementById('mapCanvas');
 
-function readSave() {
-  try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; }
+function readSave(mode = Game.mode) {
+  try { return JSON.parse(localStorage.getItem(SAVE_KEYS[mode]) || 'null'); } catch (e) { return null; }
 }
 
 function writeSave() {
   if (!Game.world || !Game.player) return;
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({
+    localStorage.setItem(SAVE_KEYS[Game.world.mode] || SAVE_KEYS.medieval, JSON.stringify({
       seed: Game.world.seedStr, player: Game.player.serialize(), time: Game.time, day: Game.day,
       explored: Game.map.exportExplored(), savedAt: Date.now(),
     }));
@@ -4862,13 +6367,32 @@ async function startAudio() {
   Sound.init();
   if (first && Sound.ready) {
     Sound.setVolumes(Game.settings.volMaster, Game.settings.volNature, Game.settings.volMusic);
-    await Music.init();
+    await Music.init(Game.mode);
     UI.renderTracks();
     if (Game.settings.musicOn && !Music.playing) Music.play(0);
   }
 }
 
-async function startWorld(seedStr, save) {
+// Modus wechseln (Menü): Titel, Farben, Musikliste
+async function setMode(mode) {
+  Game.mode = mode;
+  document.body.classList.toggle('mode-plattenbau', mode === 'plattenbau');
+  document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  document.querySelector('#menu h1').textContent = MODE_INFO[mode].title;
+  document.querySelector('#menu .sub').textContent = MODE_INFO[mode].sub;
+  if (Game.state === 'menu') UI.setContinue(readSave(mode));
+  Sound.mode = mode;
+  if (Sound.ready && Music.mode !== mode) {
+    const was = Music.playing;
+    Music.stop();
+    await Music.init(mode);
+    UI.renderTracks();
+    if (was || Game.settings.musicOn) Music.play(0);
+  }
+}
+
+async function startWorld(seedStr, save, mode = Game.mode) {
+  await setMode(mode);
   startAudio();
   Game.state = 'loading';
   Input.enabled = false;
@@ -4877,16 +6401,19 @@ async function startWorld(seedStr, save) {
   Game.world = Game.renderer = Game.player = Game.map = null;
   await nextTick();
 
-  const world = await generateWorld(seedStr, (f, t) => UI.setLoading(f, t));
+  const world = await generateWorld(seedStr, (f, t) => UI.setLoading(f, t), mode);
   Game.world = world;
   Game.renderer = new Renderer(view, world, buildSprites(world.seed));
+  Game.renderer.grain = mode === 'plattenbau';
+  Game.renderer.overlay = (R, cam, S, t) => Activity.draw(R, cam, S, t);
+  Activity.stop(true); Activity.puffs = [];
   Game.player = new Player(world, save && save.player);
   if (save && save.nearHost) placeNear(Game.player, save.nearHost);
   Game.map = new WorldMap(world);
   Game.weather = new Weather(world.seed);
   Game.shadows = new ShadowMap(world);
   if (save && save.explored) Game.map.importExplored(save.explored);
-  Game.time = save && save.time != null ? save.time : 9;
+  Game.time = save && save.time != null ? save.time : MODE_INFO[mode].start;
   Game.day = save && save.day ? save.day : 1;
   Game.lanternOverride = null;
   Game.place = null;
@@ -4897,8 +6424,9 @@ async function startWorld(seedStr, save) {
   resume();
   writeSave();
   if (save && save.nearHost) UI.toast(`Du bist in der Welt von <b>${escapeHtml(save.hostName || 'deinem Freund')}</b>. <b>Enter</b> = Chat`, 6000);
-  else UI.toast(save ? `Willkommen zurück in <b>${world.seedStr}</b>.`
-    : '<b>W A S D</b> laufen · <b>ins Bild klicken</b> zum Umschauen · <b>R</b> Autolaufen · <b>T</b> halten = Zeitraffer · <b>M</b> Karte · <b>Esc</b> Menü', 8000);
+  else if (save) UI.toast(`Willkommen zurück in <b>${world.seedStr}</b>.`, 4000);
+  else if (mode === 'plattenbau') UI.toast(`Du bist in deiner Wohnung im ${world.structures.home ? world.structures.home.floor : 4}. Stock. Die Gitarre steht im Zimmer, der Aschenbecher auf dem Balkon (hinten durch die Küche).<br><b>E</b> = benutzen · <b>M</b> Karte · <b>T</b> halten = Zeitraffer · <b>Esc</b> Menü`, 10000);
+  else UI.toast('<b>W A S D</b> laufen · <b>ins Bild klicken</b> zum Umschauen · <b>R</b> Autolaufen · <b>T</b> halten = Zeitraffer · <b>M</b> Karte · <b>Esc</b> Menü', 8000);
 }
 
 function resume() {
@@ -4949,6 +6477,7 @@ function sampleEnv(p) {
     }
   }
   Game.env.water = clamp(water / norm * 2.4, 0, 1);
+  Game.env.indoor = standHeight(w, p.x, p.y, p.feet).ceil < Infinity && w.mode === 'plattenbau' ? 1 : 0;
   Game.env.forest = clamp(trees / 30, 0, 1);
 }
 
@@ -4966,6 +6495,10 @@ function checkPlace(p) {
 
 function update(dt) {
   const I = Input, p = Game.player, s = Game.settings;
+  const cam0 = { x: p.x, y: p.y, z: p.eyeZ, yaw: p.yaw };
+  Activity.update(dt, I, cam0);
+  Activity.updatePuffs(dt, Game.weather ? Game.weather.wind : 0.3);
+  p.frozen = !!Activity.cur;
   if (I.consume('Escape') || I.consume('KeyP')) {
     if (Game.mapOpen) setMap(false); else { pause(); return; }
   }
@@ -4983,6 +6516,7 @@ function update(dt) {
   if (I.consume('KeyN')) { if (Sound.ready) Music.next(); }
   if (I.consume('KeyJ')) { pause(); UI.showPanel('fish'); return; }
   if (I.consume('KeyE') | I.consume('Mouse0')) handleAction();
+  if (Activity.cur) I.pressed.delete('KeyR');
   if (I.consume('Enter') && Net.role) openChat();
   if (I.consume('KeyU')) { const m = Sound.toggleMute(); Music.updateVolume(); UI.toast(m ? '🔇 Ton aus (<b>U</b>)' : '🔊 Ton an', 1600); }
   if (Game.mapOpen) Game.map.handleZoom(I.mapZoom);
@@ -5003,8 +6537,8 @@ function update(dt) {
   Game.cloudT += dt * (1 + (Game.timeMul - 1) * 0.04);
   if (Game.time >= 24) { Game.time -= 24; Game.day++; }
 
-  // Wetter
-  Game.weather.update(dt * (Game.timeMul > 1 ? 6 : 1), Game.day * 24 + Game.time, Game.time, s.weather);
+  // Wetter (im Plattenbau grauer)
+  Game.weather.update(dt * (Game.timeMul > 1 ? 6 : 1), Game.day * 24 + Game.time, Game.time, s.weather, Game.mode);
   Game.renderer.setCloudCover(Game.weather.cover);
 
   // Laterne: automatisch bei Nacht, L schaltet von Hand um
@@ -5032,6 +6566,7 @@ function update(dt) {
     Game.lamps = collectLights(Game.world, p.x, p.y, 150, MAX_LIGHTS);
     sampleEnv(p);
     checkPlace(p);
+    Activity.near = Activity.cur ? null : Activity.findNear(Game.world, p);
   }
 
   // Mehrspieler: eigene Position senden, andere weich bewegen; ihre Laternen leuchten mit
@@ -5056,7 +6591,7 @@ function render() {
   Game.renderer.others = Net.role ? [...Net.others.values()].filter(o => o.x !== undefined) : null;
   Game.renderer.render(
     { x: p.x, y: p.y, z: p.eyeZ, yaw: p.yaw, pitch: p.pitch, lantern: Game.lantern * flicker },
-    Game.sky, Game.anim, { cloudT: Game.cloudT });
+    Game.sky, Game.anim, { cloudT: Game.cloudT, indoors: Game.env.indoor > 0.5 });
   UI.updateNameTags(Net.role ? Net.others : new Map(), Game.renderer.W, Game.renderer.H);
   if (Game.mapOpen) {
     const dpr = window.devicePixelRatio || 1;
@@ -5076,7 +6611,7 @@ function updateSound() {
     active: !!playing,
     day: playing ? S.sunVis : 0, night: playing ? S.night : 0,
     rain: W ? W.rain : 0, wind: W ? W.wind : 0.3,
-    water: Game.env.water, forest: Game.env.forest,
+    water: Game.env.water, forest: Game.env.forest, indoor: Game.env.indoor,
     altitude: playing && p.fly ? p.feet - Math.max(0, groundHeight(Game.world, p.x, p.y)) : 0,
   });
   Music.update();
@@ -5118,7 +6653,7 @@ function boot() {
   };
   document.getElementById('btnContinue').onclick = () => {
     const s = readSave();
-    if (s) startWorld(s.seed, s);
+    if (s) startWorld(s.seed, s, Game.mode);
   };
   document.getElementById('btnResume').onclick = () => resume();
   window.addEventListener('keydown', e => {
@@ -5133,6 +6668,10 @@ function boot() {
   document.addEventListener('visibilitychange', () => { if (document.hidden && Game.state === 'play') pause(); });
   setupMultiplayer();
   setupFishing();
+  Activity.onMsg = t => UI.toast(t, 2600);
+  document.querySelectorAll('[data-mode]').forEach(b => { b.onclick = () => setMode(b.dataset.mode); });
+  setMode(localStorage.getItem('weitland.mode') === 'plattenbau' ? 'plattenbau' : 'medieval');
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => { try { localStorage.setItem('weitland.mode', b.dataset.mode); } catch (e) { /* egal */ } }));
   Music.onChange = tr => { UI.renderTracks(); if (tr) UI.toast('♪ ' + escapeHtml(tr.name), 3000); };
   requestAnimationFrame(frame);
 }
@@ -5148,12 +6687,16 @@ function fishCond() {
 }
 
 function handleAction() {
+  if (Fishing.state === 'idle' && Activity.press()) return;
   Fishing.press(Game.world, Game.player, fishCond());
 }
 
 let hintTimer = 0, hintSpot = false;
 function updateActionHint() {
   const st = Fishing.state;
+  const ah = st === 'idle' ? Activity.hint() : null;
+  document.getElementById('actionHint').classList.toggle('top', !!Activity.cur);
+  if (ah !== null) { UI.reelBar(false); UI.actionHint(ah); return; }
   UI.reelBar(st === 'reel', Fishing.progress, Fishing.tension, Fishing.pulling);
   if (st === 'bite') { UI.actionHint('Biss! Jetzt <b>E</b>!', true); return; }
   if (st === 'reel') { UI.actionHint(''); if (Input.down('KeyE', 'Mouse0') && Math.random() < 0.25) Sound.fishSound('reel'); return; }
@@ -5217,7 +6760,7 @@ function placeNear(p, host) {
   for (let r = 3; r < 14; r += 1.5) for (let k = 0; k < 12; k++) {
     const a = k / 12 * Math.PI * 2, x = host.x + Math.cos(a) * r, y = host.y + Math.sin(a) * r;
     const st = standHeight(p.world, x, y, host.f + 0.5);
-    if (Math.abs(st.h - host.f) < 1.2 && SEA_LEVEL - st.h < 0.5 && !vegetationBlocks(p.world, x, y, 0.3)) {
+    if (Math.abs(st.h - host.f) < 1.2 && SEA_LEVEL - st.h < 0.5 && !vegetationBlocks(p.world, x, y, 0.3, st.h)) {
       p.x = x; p.y = y; p.feet = st.h; p.eyeZ = st.h + EYE_HEIGHT; p.yaw = Math.atan2(host.y - y, host.x - x); p.fly = false;
       return;
     }
@@ -5280,8 +6823,15 @@ function setupMultiplayer() {
   Net.onChat = (n, t) => { UI.chatLine(n, t); refreshMp(); };
   Net.onPlayers = () => refreshMp();
   Net.onWelcome = async msg => {
+    if (msg.version && msg.version !== GAME_VERSION) {
+      Net.leave();
+      Net.setStatus(`Andere Spielversion (${msg.version}) – bitte beide die Seite neu laden bzw. dieselbe Datei benutzen.`);
+      UI.showMenu(!!Game.world); UI.showPanel('multi'); refreshMp();
+      return;
+    }
+    const mode = msg.mode || 'medieval';
     const save = { player: null, time: msg.time, day: msg.day, nearHost: msg.host, hostName: msg.hostName };
-    if (!Game.world || Game.world.seedStr !== msg.seed) await startWorld(msg.seed, save);
+    if (!Game.world || Game.world.seedStr !== msg.seed || Game.world.mode !== mode) await startWorld(msg.seed, save, mode);
     else { placeNear(Game.player, msg.host); Game.time = msg.time; Game.day = msg.day; resume(); }
   };
   Net.onTime = (time, day) => {
@@ -5290,7 +6840,7 @@ function setupMultiplayer() {
     if (Math.abs(d) > 0.25) { Game.time = time; Game.day = day; } else Game.time += d * 0.1;
   };
   Net.getGame = () => ({
-    seed: Game.world ? Game.world.seedStr : '', time: Game.time, day: Game.day,
+    seed: Game.world ? Game.world.seedStr : '', mode: Game.world ? Game.world.mode : Game.mode, version: GAME_VERSION, time: Game.time, day: Game.day,
     x: Game.player ? Game.player.x : 0, y: Game.player ? Game.player.y : 0, f: Game.player ? Game.player.feet : 0,
   });
   const inp = $('chatInput');
