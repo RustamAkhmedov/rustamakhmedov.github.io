@@ -133,6 +133,26 @@ button.big { font-size: 17px; padding: 11px; }
   color: var(--ink); border: 2px solid #8a6a40; outline: none; }
 #mpPlayers { font-size: 13px; color: var(--ink-dim); margin: 4px 0 8px; text-align: center; }
 .setRow input[type=text], #mpName { font: inherit; background: #120e0a; color: var(--ink); border: 1px solid #5a4630; padding: 4px 6px; width: 170px; }
+
+#actionHint { position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%); font-size: 14px; color: #fff;
+  background: rgba(16,13,10,.62); border: 1px solid #5a4630; padding: 5px 12px; white-space: nowrap; }
+#actionHint.urgent { color: #ffe27a; border-color: #ffd34a; animation: pulse .25s infinite alternate; }
+@keyframes pulse { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.08); } }
+#reel { position: absolute; bottom: 92px; left: 50%; transform: translateX(-50%); width: min(340px, 80vw);
+  background: rgba(16,13,10,.7); border: 1px solid #5a4630; padding: 8px 10px; }
+.reelLabel { font-size: 12px; text-align: center; margin-bottom: 6px; }
+.reelLabel b { color: var(--gold); }
+.reelBar { height: 9px; background: #120e0a; border: 1px solid #5a4630; margin-top: 4px; }
+#reelProg { height: 100%; width: 0; background: linear-gradient(to right, #4f8a3a, #a6d65e); }
+#reelTension { height: 100%; width: 0; background: #d9a441; }
+#reelTension.pull { background: #e0483a; }
+#fishList { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; max-height: 300px; overflow-y: auto; margin: 6px 0 8px;
+  scrollbar-color: #8a6a40 #1a140e; scrollbar-width: thin; }
+.fishRow { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: rgba(255,255,255,.03); font-size: 12px; }
+.fishRow canvas { width: 48px; height: 24px; image-rendering: pixelated; flex: none; }
+.fishRow .fn { color: var(--ink); } .fishRow .fd { color: var(--ink-dim); font-size: 11px; }
+.fishRow.unknown .fn { color: #6f6455; }
+@media (max-width: 520px) { #fishList { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -147,6 +167,9 @@ button.big { font-size: 17px; padding: 11px; }
   <div id="status"></div>
   <pre id="debug" class="hidden"></pre>
   <div id="roomInfo" class="hidden"></div>
+  <div id="actionHint" class="hidden"></div>
+  <div id="reel" class="hidden"><div class="reelLabel">Einholen: <b>E halten</b> · loslassen, wenn er zieht!</div>
+    <div class="reelBar"><div id="reelProg"></div></div><div class="reelBar tension"><div id="reelTension"></div></div></div>
   <div id="lockHint">Ins Bild klicken = mit Maus/Trackpad umschauen · oder zwei Finger wischen · Pfeiltasten gehen immer</div>
 </div>
 <div id="toast"></div>
@@ -172,6 +195,7 @@ button.big { font-size: 17px; padding: 11px; }
       <div class="row">
         <button id="btnSettings">Einstellungen</button>
         <button id="btnMusic">Musik</button>
+        <button id="btnFish">Fangbuch</button>
         <button id="btnHelp">Steuerung</button>
       </div>
       <p class="fine">Gleicher Seed = gleiche Welt. Probier auch Wörter wie „drachenfels“.</p>
@@ -194,6 +218,8 @@ button.big { font-size: 17px; padding: 11px; }
         <tr><td>ins Bild klicken</td><td>mit Maus oder Trackpad umschauen (Esc gibt frei)</td></tr>
         <tr><td>2 Finger wischen</td><td>umschauen auf dem Trackpad, ohne Klick</td></tr>
         <tr><td>M</td><td>Karte (wischen/Mausrad = Zoom)</td></tr>
+        <tr><td>E / Klick</td><td>Angeln (am Wasser) · im Plattenbau: rauchen, Gitarre …</td></tr>
+        <tr><td>J</td><td>Fangbuch</td></tr>
         <tr><td>L</td><td>Laterne</td></tr>
         <tr><td>T halten</td><td>Zeitraffer: je länger, desto schneller (ein Tag in wenigen Sekunden)</td></tr>
         <tr><td>N</td><td>nächster Song</td></tr>
@@ -244,6 +270,16 @@ button.big { font-size: 17px; padding: 11px; }
         und erscheinen direkt neben dem Gastgeber. <b>Enter</b> = Chat.<br>
         Braucht Internet. Die Verbindung läuft direkt zwischen euren Rechnern (WebRTC); in manchen
         Schul-WLANs sind solche Verbindungen gesperrt – dann klappt es z. B. über einen Handy-Hotspot.</p>
+      <button data-back>Zurück</button>
+    </section>
+
+    <section id="p_fish" class="hidden">
+      <h2>Fangbuch</h2>
+      <div id="fishSummary" class="now"></div>
+      <div id="fishList"></div>
+      <p class="fine"><b>E</b> am Wasser = Angel auswerfen. Taucht der Schwimmer richtig ab: sofort <b>E</b>.
+        Dann <b>E halten</b> zum Einholen – aber loslassen, solange der Fisch zieht. In der Dämmerung und bei Regen
+        beißen sie öfter, manche Fische nur nachts, große nur im tiefen Wasser. Seen/Flüsse und Meer haben andere Arten.</p>
       <button data-back>Zurück</button>
     </section>
 
@@ -680,8 +716,11 @@ async function generateWorld(seedStr, onProgress) {
     veg.h[j] = th[i]; veg.kind[j] = tk[i]; veg.variant[j] = tv[i];
   }
 
-  // ---------- 6. Startpunkt: am Rand eines Dorfes, sonst eine Wiese nahe der Mitte ----------
-  const world = { N, seed, seedStr, levels, veg, bStart, NB, gtype, mat, cells, structures, spawn: null };
+  // ---------- 6. Meer oder Binnengewässer? (Flutfüllung vom Kartenrand, 8-m-Raster) ----------
+  const seaMask = computeSeaMask(levels[3]);
+
+  // ---------- 7. Startpunkt: am Rand eines Dorfes, sonst eine Wiese nahe der Mitte ----------
+  const world = { N, seed, seedStr, mode: 'medieval', levels, veg, bStart, NB, gtype, mat, cells, structures, seaMask, spawn: null };
   world.spawn = findSpawn(world, forestAt);
 
   onProgress(1, 'Fertig');
@@ -798,6 +837,26 @@ function collectLights(world, x, y, radius, max) {
   }
   out.sort((a, b) => a[3] - b[3]);
   return out.slice(0, max);
+}
+
+// 1 = Meer (mit dem Kartenrand verbunden), 0 = Land oder Binnengewässer; 256×256, 8 m pro Zelle
+function computeSeaMask(L) {
+  const S = L.size, h = L.h, m = new Uint8Array(S * S), stack = [];
+  for (let i = 0; i < S; i++) stack.push(i, (S - 1) * S + i, i * S, i * S + S - 1);
+  while (stack.length) {
+    const i = stack.pop();
+    if (m[i] || h[i] >= 0) continue;
+    m[i] = 1;
+    const x = i % S, y = (i / S) | 0;
+    if (x > 0) stack.push(i - 1); if (x < S - 1) stack.push(i + 1);
+    if (y > 0) stack.push(i - S); if (y < S - 1) stack.push(i + S);
+  }
+  return m;
+}
+
+function isSeaAt(world, x, y) {
+  if (x < 0 || y < 0 || x >= world.N || y >= world.N) return true;
+  return world.seaMask[((y / 8) | 0) * 256 + ((x / 8) | 0)] === 1;
 }
 </script>
 <script>
@@ -2036,6 +2095,7 @@ class Renderer {
     this.drawOthers(cam, S, t);
     if (this.details) this.drawDetails(cam, S, t);
     this.drawParticles(cam, S, t);
+    if (this.fishView) this.drawFishing(cam, S, t, this.fishView);
     if (P.rain > 0.02) this.drawRain(t, P.rain, P.wind);
     this.ctx.putImageData(this.img, 0, 0);
   }
@@ -2110,6 +2170,8 @@ class Renderer {
     const lightScale = 0.86;
     const rain = P.rain;
     const refl = this.reflections && waterLift > 0.05;
+    const seaMask = world.seaMask, wind = P.wind;
+    const waveSea = 0.1 + wind * 0.16, waveLake = 0.025 + wind * 0.05;
     wmask.fill(0);
 
     // ---- Spaltenzustand: alles unterhalb von ytop ist belegt, dazu bis zu MAX_HOLES freie Lücken ----
@@ -2185,8 +2247,19 @@ class Renderer {
         }
 
         // ---- 2. Boden, Wasser oder Gebäude ----
-        const water = h < SEA_LEVEL;
-        const surf = water ? SEA_LEVEL : h;
+        // ---- Wellen: echte Höhe nahe der Kamera, weiter weg flach ----
+        let wh = 0, wgx = 0, wgy = 0, sea = 0;
+        if (h < SEA_LEVEL + 0.35 && z < 80) {
+          sea = seaMask ? seaMask[(((wy * 0.125) | 0) & 255) * 256 + (((wx * 0.125) | 0) & 255)] : 1;
+          const amp = (sea ? waveSea : waveLake) * (z > 50 ? (80 - z) / 30 : 1);
+          const a1 = wx * 0.42 + wy * 0.17 + t * 1.25, a2 = wy * 0.55 - wx * 0.14 + t * 1.65, a3 = (wx + wy) * 0.95 + t * 2.6;
+          const c1 = Math.cos(a1), c2 = Math.cos(a2), c3 = Math.cos(a3);
+          wh = amp * (Math.sin(a1) + 0.6 * Math.sin(a2) + 0.25 * Math.sin(a3));
+          wgx = amp * (0.42 * c1 - 0.084 * c2 + 0.2375 * c3);
+          wgy = amp * (0.17 * c1 + 0.33 * c2 + 0.2375 * c3);
+        }
+        const water = h < SEA_LEVEL + wh;
+        const surf = water ? SEA_LEVEL + wh : h;
         const syf = horizon + (camZ - surf) * focal / z;
         let n;
         if (nh === 0) {
@@ -2225,9 +2298,11 @@ class Renderer {
               r *= (ambR + sunR * dS + moR * dM + lan * 1.15) * lightScale;
               g *= (ambG + sunG * dS + moG * dM + lan * 0.72) * lightScale;
               b *= (ambB + sunB * dS + moB * dM + lan * 0.34) * lightScale;
+              // nasser Sand direkt an der Wasserkante
+              if (h < SEA_LEVEL + 0.3 && z < 80 && kc >= 0) { const wet = 0.78 + (h - SEA_LEVEL) * 0.7; r *= wet; g *= wet; b *= wet * 1.02; }
             } else {
               // ---- Wasser: durchscheinender Grund, Himmelsspiegelung, Wellen, Glitzern ----
-              const depth = SEA_LEVEL - h;
+              const depth = surf - h;
               const lt = (ambR + sunR * sdz * cs) * 0.5 + (ambB + sunB * sdz * cs) * 0.5;
               const lw = lt < 0 ? 0 : lt;
               const tr = depth < 3.5 ? depth / 3.5 : 1;
@@ -2250,10 +2325,22 @@ class Renderer {
                 }
               }
               r += (pr - r) * fres; g += (pg - g) * fres; b += (pb - b) * fres;
-              const wk = 1 + wq * (0.28 + rain * 0.3);
+              // Wellenflanken: zur Sonne geneigte Seiten heller
+              const tilt = (-wgx * sdx - wgy * sdy) * 1.6 - (wgx * dnx + wgy * dny) * 0.9;
+              const wk = 1 + wq * (0.28 + rain * 0.3) + tilt;
               r *= wk; g *= wk; b *= wk;
+              // Schaum: Linien, die zur Küste rollen, und eine flackernde Kante am Ufer
+              if (depth < 1.4 && kc >= 0) {
+                const roll = Math.sin(depth * 5.2 - t * (sea ? 2.1 : 1.2) + wq * 3);
+                let foam = smoothstep(0.72, 0.97, roll) * (1 - depth / 1.4) * (sea ? 0.9 : 0.35);
+                foam = Math.max(foam, smoothstep(0.28, 0.0, depth) * (0.55 + 0.45 * Math.sin(t * 3.1 + wx * 1.7 + wy * 1.3)) * (sea ? 1 : 0.5));
+                if (foam > 0) {
+                  const fl = (ambR + sunR * (sdz > 0 ? sdz : 0) * cs + moR * 1.5) * 0.95 + lan * 0.8;
+                  r += (236 * fl - r) * foam; g += (242 * fl - g) * foam; b += (242 * fl - b) * foam;
+                }
+              }
               const cosE = 1 / Math.sqrt(1 + sl * sl);
-              const qxv = dnx * cosE, qyv = dny * cosE, qzv = sl * cosE + wq * 0.14;
+              const qxv = dnx * cosE, qyv = dny * cosE, qzv = sl * cosE + wq * 0.14 + (wgx * dnx + wgy * dny) * 0.9;
               if (sunVis > 0) {
                 const sd = qxv * sdx + qyv * sdy + qzv * sdz;
                 if (sd > 0.95) { const sp = Math.pow((sd - 0.95) * 20, 6) * sunVis * 255 * cs; r += sp * sunR; g += sp * sunG; b += sp * sunB * 0.9; }
@@ -2892,6 +2979,61 @@ class Renderer {
     }
   }
 
+  // ---- Angelrute (unten rechts), Schnur und Schwimmer ----
+  drawFishing(cam, S, t, v) {
+    const { W, H, buf, zbuf, focal, horizon, fx, fy, rx, ry } = this;
+    const light = clamp((S.amb[0] + S.sunLight[0] * 0.6) * 1.1 + this.P.lantern * 0.4, 0.25, 1.2);
+    const put = (x, y, r, g, b) => {
+      x |= 0; y |= 0;
+      if (x < 0 || y < 0 || x >= W || y >= H) return;
+      buf[y * W + x] = 0xff000000 | ((clamp(b, 0, 255) | 0) << 16) | ((clamp(g, 0, 255) | 0) << 8) | (clamp(r, 0, 255) | 0);
+    };
+    // Schwimmer projizieren
+    const dx = v.x - cam.x, dy = v.y - cam.y, z = dx * fx + dy * fy;
+    let bx = -1, by = -1;
+    if (z > 0.3) { bx = W * 0.5 + (dx * rx + dy * ry) * focal / z; by = horizon + (cam.z - v.z) * focal / z; }
+    // Rute: biegt sich beim Einholen
+    const bend = v.reel ? 0.06 + (v.tension || 0) * 0.08 : 0;
+    const x0 = W * 0.95, y0 = H * 1.02, x1 = W * (0.72 - bend * 0.3), y1 = H * (0.48 + bend);
+    const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0));
+    for (let k = 0; k <= steps; k++) {
+      const q = k / steps, x = lerp(x0, x1, q), y = lerp(y0, y1, q) + Math.sin(q * Math.PI) * bend * H * 0.3;
+      const thick = q < 0.35 ? 2 : 1;
+      for (let o = 0; o < thick; o++) put(x + o, y, 92 * light, 64 * light, 40 * light);
+      if (q < 0.18) put(x + thick, y, 40 * light, 34 * light, 30 * light);   // Griff
+    }
+    // Schnur mit leichtem Durchhang
+    if (bx >= 0) {
+      const sag = v.reel ? 0 : Math.min(H * 0.12, 0.08 * Math.hypot(bx - x1, by - y1));
+      const n = Math.ceil(Math.hypot(bx - x1, by - y1)) + 1;
+      for (let k = 0; k <= n; k++) {
+        const q = k / n, x = lerp(x1, bx, q), y = lerp(y1, by, q) + Math.sin(q * Math.PI) * sag;
+        const p = (y | 0) * W + (x | 0);
+        if (x < 0 || y < 0 || x >= W || y >= H) continue;
+        const o = buf[p], a = 0.45;
+        const r = (o & 255) * (1 - a) + 225 * a * light, g = ((o >>> 8) & 255) * (1 - a) + 225 * a * light, b = ((o >>> 16) & 255) * (1 - a) + 215 * a * light;
+        buf[p] = 0xff000000 | ((b | 0) << 16) | ((g | 0) << 8) | (r | 0);
+      }
+      // Schwimmer: oben rot, unten weiß
+      const sz = Math.max(1, Math.round(0.12 * focal / Math.max(z, 0.5)));
+      const p0 = (by | 0) * W + (bx | 0);
+      if (p0 >= 0 && p0 < W * H && (zbuf[p0] > z - 0.5 || v.flying)) {
+        for (let yy = -sz; yy <= sz; yy++) for (let xx = -Math.max(0, sz - 1); xx <= Math.max(0, sz - 1); xx++) {
+          const top = yy <= 0;
+          put(bx + xx, by + yy, (top ? 220 : 236) * light, (top ? 40 : 236) * light, (top ? 36 : 230) * light);
+        }
+      }
+      // Spritzer beim Aufkommen und beim Biss
+      if (v.splash > 0) {
+        const rr = (1 - v.splash) * 6 * sz + 2;
+        for (let k = 0; k < 14; k++) {
+          const a = k / 14 * Math.PI * 2;
+          put(bx + Math.cos(a) * rr, by + Math.sin(a) * rr * 0.35, 230 * light, 238 * light, 240 * light);
+        }
+      }
+    }
+  }
+
   // ---- Regen: schräge Striche über dem ganzen Bild ----
   drawRain(t, rain, wind) {
     const { W, H, buf } = this;
@@ -3126,6 +3268,26 @@ const Sound = {
       case 'snow': this.burst(t, 0.1, 'lowpass', 2600 * k, 0.5, 0.08); this.burst(t + 0.03, 0.06, 'highpass', 3000, 0.5, 0.03); break;
       case 'dirt': this.burst(t, 0.08, 'lowpass', 900 * k, 0.6, 0.11); break;
       default: this.burst(t, 0.09, 'lowpass', 1300 * k, 0.6, 0.07);
+    }
+  },
+
+  // ---- Angeln ----
+  fishSound(type) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime + 0.005;
+    switch (type) {
+      case 'cast': this.burst(t, 0.35, 'bandpass', 2600, 0.6, 0.05); this.tone(this.sfxBus, 'sine', t, 0.3, 900, 300, 0.02); break;
+      case 'plop': this.tone(this.sfxBus, 'sine', t, 0.12, 700, 180, 0.12); this.burst(t + 0.02, 0.15, 'bandpass', 1200, 0.8, 0.05); break;
+      case 'nibble': this.tone(this.sfxBus, 'sine', t, 0.06, 520, 300, 0.05); break;
+      case 'bite': this.burst(t, 0.3, 'bandpass', 900, 0.7, 0.16); this.tone(this.sfxBus, 'sine', t, 0.15, 400, 120, 0.12); break;
+      case 'hook': this.tone(this.sfxBus, 'triangle', t, 0.08, 1200, 1500, 0.05); break;
+      case 'pull': this.burst(t, 0.18, 'bandpass', 700, 0.8, 0.08); break;
+      case 'reel': this.burst(t, 0.015, 'highpass', 3500, 0.7, 0.03); break;
+      case 'snap': this.tone(this.sfxBus, 'square', t, 0.1, 1800, 300, 0.05); this.burst(t, 0.2, 'highpass', 2000, 0.5, 0.06); break;
+      case 'catch':
+        this.burst(t, 0.35, 'bandpass', 1000, 0.6, 0.12);
+        [72, 76, 79, 84].forEach((m, i) => this.tone(this.sfxBus, 'triangle', t + 0.15 + i * 0.09, 0.3, 440 * Math.pow(2, (m - 69) / 12), 440 * Math.pow(2, (m - 69) / 12), 0.07));
+        break;
     }
   },
 
@@ -3522,6 +3684,9 @@ const Net = {
       const o = this.others.get(conn.peer);
       const text = String(msg.text || '').slice(0, 140);
       if (o && text) this.broadcast({ t: 'chat', name: o.name, text }, null, true);
+    } else if (msg.t === 'ann') {
+      const text = String(msg.text || '').slice(0, 160);
+      if (text) this.broadcast({ t: 'sys', text }, conn.peer, true);
     }
   },
 
@@ -3599,6 +3764,12 @@ const Net = {
     else if (this.role === 'client' && this.hostConn && this.hostConn.open) this.hostConn.send({ t: 'chat', text });
   },
 
+  // Ereignis für alle anderen ansagen (z. B. "X hat einen Hecht gefangen")
+  announce(text) {
+    if (this.role === 'host') this.broadcast({ t: 'sys', text }, null, false);
+    else if (this.role === 'client' && this.hostConn && this.hostConn.open) this.hostConn.send({ t: 'ann', text });
+  },
+
   // ---------------- jedes Frame ----------------
   update(dt, me) {
     if (!this.role) return;
@@ -3647,6 +3818,244 @@ const Net = {
 </script>
 <script>
 'use strict';
+/* Angeln: E (oder Klick) wirft aus. Warten – manchmal zuckt der Schwimmer nur.
+   Taucht er richtig ab, schnell E drücken. Dann einholen: E halten, aber loslassen,
+   solange der Fisch zieht, sonst reißt die Schnur. Fänge landen im Fangbuch (J). */
+
+// water: 'fresh' (See/Fluss), 'sea' (Meer), 'any'; time: 'any' | 'day' | 'night' | 'twilight'
+const FISH = [
+  { id: 'rotauge', name: 'Rotauge', water: 'fresh', min: 12, max: 32, w: 30, str: 0.25, col: [176, 182, 190], fin: [200, 70, 60] },
+  { id: 'barsch', name: 'Barsch', water: 'fresh', min: 15, max: 42, w: 22, str: 0.4, col: [118, 140, 70], fin: [220, 110, 50], stripes: true },
+  { id: 'karpfen', name: 'Karpfen', water: 'fresh', min: 30, max: 85, w: 12, str: 0.6, col: [176, 140, 70], fin: [150, 110, 60] },
+  { id: 'forelle', name: 'Forelle', water: 'fresh', min: 20, max: 60, w: 10, str: 0.5, col: [150, 160, 140], fin: [210, 120, 140], rain: 2 },
+  { id: 'hecht', name: 'Hecht', water: 'fresh', min: 45, max: 125, w: 5, str: 0.85, col: [92, 120, 70], fin: [130, 110, 60], long: true },
+  { id: 'aal', name: 'Aal', water: 'fresh', min: 40, max: 95, w: 6, str: 0.55, col: [70, 66, 50], fin: [70, 66, 50], time: 'night', long: true },
+  { id: 'wels', name: 'Wels', water: 'fresh', min: 80, max: 230, w: 1.4, str: 1, col: [80, 76, 70], fin: [60, 56, 52], time: 'night' },
+  { id: 'goldschleie', name: 'Goldene Schleie', water: 'fresh', min: 25, max: 55, w: 0.5, str: 0.5, col: [236, 190, 60], fin: [250, 220, 120], rare: true },
+  { id: 'hering', name: 'Hering', water: 'sea', min: 18, max: 36, w: 30, str: 0.25, col: [170, 190, 210], fin: [120, 140, 170] },
+  { id: 'makrele', name: 'Makrele', water: 'sea', min: 25, max: 48, w: 22, str: 0.45, col: [70, 120, 150], fin: [200, 210, 220], stripes: true },
+  { id: 'scholle', name: 'Scholle', water: 'sea', min: 20, max: 52, w: 15, str: 0.35, col: [150, 126, 92], fin: [220, 120, 50], flat: true },
+  { id: 'dorsch', name: 'Dorsch', water: 'sea', min: 35, max: 115, w: 11, str: 0.7, col: [140, 132, 100], fin: [120, 112, 86] },
+  { id: 'wolfsbarsch', name: 'Wolfsbarsch', water: 'sea', min: 35, max: 85, w: 5, str: 0.75, col: [160, 170, 176], fin: [110, 120, 130], time: 'twilight' },
+  { id: 'thunfisch', name: 'Thunfisch', water: 'sea', min: 90, max: 260, w: 0.9, str: 1, col: [50, 70, 110], fin: [230, 200, 60], deep: true },
+  { id: 'stiefel', name: 'Alter Stiefel', water: 'any', min: 28, max: 32, w: 2.5, str: 0.1, col: [96, 70, 46], fin: [70, 50, 34], junk: true },
+  { id: 'flasche', name: 'Flaschenpost', water: 'any', min: 22, max: 26, w: 0.8, str: 0.1, col: [120, 170, 120], fin: [230, 220, 190], junk: true },
+];
+
+const JOURNAL_KEY = 'weitland.fish.v1';
+
+const Fishing = {
+  state: 'idle',            // idle | flying | waiting | bite | reel
+  bob: null,                // Schwimmer {x, y, z, sea, depth}
+  t: 0, waitT: 0, nibbles: [], biteT: 0, castFrom: null,
+  fish: null, size: 0, progress: 0, tension: 0, pulling: false, pullT: 0, reelT: 0,
+  dip: 0, splash: 0, journal: {}, onEvent: null,
+
+  loadJournal() {
+    try { this.journal = JSON.parse(localStorage.getItem(JOURNAL_KEY) || '{}') || {}; } catch (e) { this.journal = {}; }
+  },
+  saveJournal() { try { localStorage.setItem(JOURNAL_KEY, JSON.stringify(this.journal)); } catch (e) { /* egal */ } },
+  emit(type, data) { if (this.onEvent) this.onEvent(type, data); },
+
+  // Wasserstelle vor dem Spieler suchen (für Hinweis und Auswurf)
+  findSpot(world, p) {
+    if (p.fly) return null;
+    const dx = Math.cos(p.yaw), dy = Math.sin(p.yaw);
+    const ideal = clamp(8 + p.pitch * 12, 4, 15);
+    let best = null;
+    for (let s = 2.5; s <= 18; s += 0.5) {
+      const x = p.x + dx * s, y = p.y + dy * s;
+      const h = groundHeight(world, x, y);
+      if (h > SEA_LEVEL - 0.35) continue;
+      if (world.mat[(y | 0) * world.N + (x | 0)] & M_STRUCT && !(world.mat[(y | 0) * world.N + (x | 0)] & M_SPAN)) continue;
+      const score = Math.abs(s - ideal);
+      if (!best || score < best.score) best = { x, y, z: SEA_LEVEL, depth: SEA_LEVEL - h, sea: isSeaAt(world, x, y), score, s };
+    }
+    return best;
+  },
+
+  // E / Klick
+  press(world, p, cond) {
+    if (this.state === 'idle') {
+      const spot = this.findSpot(world, p);
+      if (!spot) { this.emit('msg', 'Hier ist kein Wasser zum Angeln – stell dich ans Ufer oder auf einen Steg.'); return; }
+      this.bob = spot;
+      this.castFrom = { x: p.x, y: p.y, z: p.eyeZ + 0.3 };
+      this.state = 'flying'; this.t = 0;
+      this.emit('cast');
+    } else if (this.state === 'waiting') {
+      this.reset();
+      this.emit('msg', 'Eingeholt.');
+    } else if (this.state === 'bite') {
+      this.hook(cond);
+    }
+  },
+
+  reset() { this.state = 'idle'; this.bob = null; this.fish = null; this.dip = 0; this.emit('ui'); },
+
+  scheduleWait(cond) {
+    // Dämmerung und Regen: mehr Bisse
+    let base = 4 + Math.random() * 9;
+    if (cond.twilight) base *= 0.7;
+    if (cond.rain > 0.3) base *= 0.7;
+    this.waitT = base;
+    this.nibbles = [];
+    const n = (Math.random() * 3) | 0;
+    for (let i = 0; i < n; i++) this.nibbles.push(Math.random() * base * 0.85);
+    this.nibbles.sort((a, b) => a - b);
+    this.t = 0;
+  },
+
+  pickFish(cond) {
+    const water = this.bob.sea ? 'sea' : 'fresh';
+    let total = 0;
+    const cand = [];
+    for (const f of FISH) {
+      if (f.water !== 'any' && f.water !== water) continue;
+      let w = f.w;
+      if (f.time === 'night') w *= cond.night ? 4 : 0.05;
+      if (f.time === 'twilight') w *= cond.twilight ? 5 : 0.4;
+      if (f.rain) w *= 1 + cond.rain * f.rain;
+      if (f.deep) w *= this.bob.depth > 6 ? 3 : 0.1;
+      cand.push([f, w]); total += w;
+    }
+    let r = Math.random() * total;
+    for (const [f, w] of cand) { r -= w; if (r <= 0) return f; }
+    return cand[0][0];
+  },
+
+  hook(cond) {
+    this.fish = this.pickFish(cond);
+    const f = this.fish;
+    this.size = Math.round(f.min + (f.max - f.min) * Math.pow(Math.random(), 2.2));
+    this.state = 'reel';
+    this.progress = 0; this.tension = 0; this.pulling = false; this.pullT = 0.6 + Math.random(); this.reelT = 0;
+    this.need = f.junk ? 1.2 : 2 + (this.size - f.min) / Math.max(1, f.max - f.min) * 3 + f.str * 2;
+    this.emit('hook');
+    this.emit('ui');
+  },
+
+  update(dt, world, p, holding, cond) {
+    if (this.state === 'idle') return;
+    this.t += dt;
+    // Wer wegläuft oder losfliegt, holt die Angel ein
+    if (p.fly || (this.castFrom && Math.hypot(p.x - this.castFrom.x, p.y - this.castFrom.y) > 3)) {
+      this.reset(); this.emit('msg', 'Die Angel ist eingeholt.'); return;
+    }
+    if (this.state === 'flying') {
+      if (this.t >= 0.6) { this.state = 'waiting'; this.splash = 1; this.emit('plop'); this.scheduleWait(cond); }
+      return;
+    }
+    this.splash = Math.max(0, this.splash - dt * 2.5);
+    if (this.state === 'waiting') {
+      this.dip = 0;
+      while (this.nibbles.length && this.t > this.nibbles[0]) { this.nibbles.shift(); this.nibbleT = 0.25; this.emit('nibble'); }
+      if (this.nibbleT > 0) { this.nibbleT -= dt; this.dip = 0.12; }
+      if (this.t > this.waitT) { this.state = 'bite'; this.biteT = 0; this.splash = 1; this.emit('bite'); }
+    } else if (this.state === 'bite') {
+      this.biteT += dt;
+      this.dip = 0.35;
+      if (this.biteT > 0.95) {
+        this.state = 'waiting'; this.scheduleWait(cond); this.dip = 0;
+        this.emit('msg', 'Zu spät – der Fisch hat den Köder geklaut.');
+      }
+    } else if (this.state === 'reel') {
+      const f = this.fish;
+      this.pullT -= dt;
+      if (this.pullT <= 0) {
+        this.pulling = !this.pulling;
+        this.pullT = this.pulling ? 0.45 + Math.random() * (0.5 + f.str) : 0.6 + Math.random() * (1.6 - f.str);
+        if (f.junk) this.pulling = false;
+        if (this.pulling) this.emit('pull');
+      }
+      if (holding) {
+        if (this.pulling) this.tension += dt * (0.8 + f.str * 0.9);
+        else { this.tension -= dt * 0.5; this.progress += dt / this.need; }
+        this.reelT += dt;
+      } else {
+        this.tension -= dt * 1.1;
+        this.progress = Math.max(0, this.progress - dt * 0.04);
+      }
+      this.tension = clamp(this.tension, 0, 1.2);
+      this.dip = this.pulling ? 0.3 : 0.1;
+      if (this.tension >= 1) {
+        this.emit('snap');
+        this.emit('msg', `Die Schnur ist gerissen – ${f.junk ? 'weg ist es' : 'der Fisch ist weg'}.`);
+        this.reset();
+      } else if (this.progress >= 1) {
+        this.catchIt();
+      } else if (this.t > 40) {
+        this.emit('msg', 'Der Fisch hat sich losgerissen.');
+        this.reset();
+      }
+      this.emit('ui');
+    }
+  },
+
+  catchIt() {
+    const f = this.fish, size = this.size;
+    const j = this.journal[f.id] || { count: 0, best: 0 };
+    const first = j.count === 0, record = size > j.best;
+    j.count++; j.best = Math.max(j.best, size);
+    if (!j.first) j.first = Date.now();
+    this.journal[f.id] = j;
+    this.saveJournal();
+    this.emit('catch', { fish: f, size, first, record: record && !first });
+    this.reset();
+  },
+
+  // Position des Schwimmers für den Renderer (fliegt im Bogen, wippt auf dem Wasser)
+  view(t) {
+    if (this.state === 'idle' || !this.bob) return null;
+    const b = this.bob;
+    if (this.state === 'flying') {
+      const k = Math.min(1, this.t / 0.6), f = this.castFrom;
+      return { x: lerp(f.x, b.x, k), y: lerp(f.y, b.y, k), z: lerp(f.z, b.z, k) + Math.sin(k * Math.PI) * 2.5, flying: true, reel: 0, splash: 0 };
+    }
+    let x = b.x, y = b.y;
+    if (this.state === 'reel') {
+      const k = this.progress * 0.75, f = this.castFrom;
+      x = lerp(b.x, f.x, k) + (this.pulling ? Math.sin(t * 23) * 0.15 : 0);
+      y = lerp(b.y, f.y, k) + (this.pulling ? Math.cos(t * 19) * 0.15 : 0);
+    }
+    const z = b.z + Math.sin(t * 2.2) * 0.04 - this.dip + (this.state === 'bite' ? Math.sin(t * 30) * 0.05 : 0);
+    return { x, y, z, flying: false, reel: this.state === 'reel' ? 1 : 0, splash: this.splash, tension: this.tension };
+  },
+};
+
+// Kleine Pixel-Fische fürs Fangbuch (Canvas, 24×12)
+function drawFishIcon(canvas, f, unknown) {
+  const c = canvas.getContext('2d');
+  canvas.width = 24; canvas.height = 12;
+  c.clearRect(0, 0, 24, 12);
+  const col = unknown ? [70, 62, 52] : f.col, fin = unknown ? [56, 50, 42] : f.fin;
+  const rgb = a => `rgb(${a[0] | 0},${a[1] | 0},${a[2] | 0})`;
+  if (f.junk && !unknown) {
+    c.fillStyle = rgb(col);
+    if (f.id === 'stiefel') { c.fillRect(8, 1, 6, 8); c.fillRect(8, 7, 11, 4); c.fillStyle = rgb(fin); c.fillRect(8, 10, 11, 1); }
+    else { c.fillRect(5, 4, 13, 5); c.fillRect(18, 5, 3, 3); c.fillStyle = rgb(fin); c.fillRect(8, 5, 6, 3); }
+    return;
+  }
+  const len = f.long ? 22 : 18, h = f.flat ? 6 : f.long ? 4 : 6, x0 = 2, cy = 6;
+  for (let x = 0; x < len; x++) {
+    const t = x / len;
+    const half = Math.max(1, Math.round(h / 2 * Math.sin(Math.min(1, t * 1.25) * Math.PI) + (t < 0.2 ? 0.5 : 0)));
+    for (let y = -half; y < half; y++) {
+      const shade = y < 0 ? 1.12 : 0.82;
+      let cc = col.map(v => v * shade);
+      if (f.stripes && !unknown && x % 4 === 0 && x > 3 && x < len - 4) cc = cc.map(v => v * 0.7);
+      c.fillStyle = rgb(cc);
+      c.fillRect(x0 + x, cy + y, 1, 1);
+    }
+  }
+  c.fillStyle = rgb(fin);
+  c.fillRect(x0 + len, cy - 3, 2, 2); c.fillRect(x0 + len, cy + 1, 2, 2); c.fillRect(x0 + len - 1, cy - 1, 1, 2);
+  c.fillRect(x0 + (len >> 1) - 1, cy - (h >> 1) - 1, 3, 1);
+  if (!unknown) { c.fillStyle = '#111'; c.fillRect(x0 + 3, cy - 1, 1, 1); }
+}
+</script>
+<script>
+'use strict';
 /* Eingabe: Tastatur, Maus (Pointer Lock) und Trackpad (Zwei-Finger-Wischen ohne Klick).
    Tasten werden über e.code gelesen, damit QWERTZ und QWERTY gleich funktionieren. */
 
@@ -3679,7 +4088,14 @@ const Input = {
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
+      if (!this.locked) this.keys.delete('Mouse0');
     });
+    // Klick/Tippen im Spiel (bei gefangener Maus) zählt wie die Aktionstaste
+    document.addEventListener('mousedown', e => {
+      if (!this.locked || e.button !== 0) return;
+      this.pressed.add('Mouse0'); this.keys.add('Mouse0');
+    });
+    document.addEventListener('mouseup', e => { if (e.button === 0) this.keys.delete('Mouse0'); });
     document.addEventListener('mousemove', e => {
       if (!this.locked) return;
       // Manche Browser liefern beim Sperren einzelne riesige Sprünge
@@ -4170,6 +4586,7 @@ const UI = {
     document.querySelectorAll('[data-back]').forEach(b => { b.onclick = () => this.showPanel('main'); });
     $('btnSettings').onclick = () => this.showPanel('settings');
     $('btnHelp').onclick = () => this.showPanel('help');
+    $('btnFish').onclick = () => this.showPanel('fish');
     $('btnMusic').onclick = () => { startAudio(); this.renderTracks(); this.showPanel('music'); };
     $('mPrev').onclick = () => { startAudio(); Music.prev(); };
     $('mNext').onclick = () => { startAudio(); Music.next(); };
@@ -4200,7 +4617,8 @@ const UI = {
   hideMenu() { $('menu').classList.add('hidden'); },
 
   showPanel(name) {
-    for (const p of ['main', 'settings', 'help', 'music', 'multi', 'loading']) $('p_' + p).classList.toggle('hidden', p !== name);
+    for (const p of ['main', 'settings', 'help', 'music', 'multi', 'fish', 'loading']) $('p_' + p).classList.toggle('hidden', p !== name);
+    if (name === 'fish') this.renderFish();
   },
 
   setLoading(frac, text) {
@@ -4278,6 +4696,43 @@ const UI = {
       el.style.opacity = o.screen.z > 120 ? 0.6 : 1;
     }
     for (const el of [...box.children]) if (!seen.has(el)) el.remove();
+  },
+
+  renderFish() {
+    const box = $('fishList');
+    box.innerHTML = '';
+    let known = 0, total = 0;
+    for (const f of FISH) {
+      const j = Fishing.journal[f.id];
+      const row = document.createElement('div');
+      row.className = 'fishRow' + (j ? '' : ' unknown');
+      const cv = document.createElement('canvas');
+      drawFishIcon(cv, f, !j);
+      const txt = document.createElement('div');
+      txt.innerHTML = j ? `<div class="fn">${f.name}</div><div class="fd">${j.count}× · größter ${j.best} cm</div>`
+        : `<div class="fn">???</div><div class="fd">${f.water === 'sea' ? 'Meer' : f.water === 'fresh' ? 'See / Fluss' : 'überall'}</div>`;
+      row.appendChild(cv); row.appendChild(txt);
+      box.appendChild(row);
+      if (j) { known++; total += j.count; }
+    }
+    $('fishSummary').textContent = `${known} von ${FISH.length} entdeckt · ${total} Fänge`;
+  },
+
+  actionHint(text, urgent) {
+    const el = $('actionHint');
+    if (!text) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    el.classList.toggle('urgent', !!urgent);
+    if (el.innerHTML !== text) el.innerHTML = text;
+  },
+
+  reelBar(show, progress, tension, pulling) {
+    $('reel').classList.toggle('hidden', !show);
+    if (!show) return;
+    $('reelProg').style.width = (progress * 100).toFixed(1) + '%';
+    const t = $('reelTension');
+    t.style.width = (Math.min(1, tension) * 100).toFixed(1) + '%';
+    t.classList.toggle('pull', !!pulling);
   },
 
   placeBanner(name) {
@@ -4526,11 +4981,15 @@ function update(dt) {
     UI.toast(p.autorun ? 'Autolaufen an · nur noch lenken (<b>S</b> stoppt)' : 'Autolaufen aus', 2200);
   }
   if (I.consume('KeyN')) { if (Sound.ready) Music.next(); }
+  if (I.consume('KeyJ')) { pause(); UI.showPanel('fish'); return; }
+  if (I.consume('KeyE') | I.consume('Mouse0')) handleAction();
   if (I.consume('Enter') && Net.role) openChat();
   if (I.consume('KeyU')) { const m = Sound.toggleMute(); Music.updateVolume(); UI.toast(m ? '🔇 Ton aus (<b>U</b>)' : '🔊 Ton an', 1600); }
   if (Game.mapOpen) Game.map.handleZoom(I.mapZoom);
 
   p.update(dt, s);
+  Fishing.update(dt, Game.world, p, I.down('KeyE', 'Mouse0'), fishCond());
+  updateActionHint();
   if (p.stepEvent) Sound.step(p.stepEvent);
   if (p.landed) Sound.land();
 
@@ -4593,6 +5052,7 @@ function render() {
   Game.sky = applyWeather(computeSky(Game.time), Game.weather);
   const flicker = 0.93 + 0.07 * Math.sin(Game.anim * 11) * Math.sin(Game.anim * 7.3);
   Game.renderer.shadowMap = Game.shadows.cur;
+  Game.renderer.fishView = Fishing.view(Game.anim);
   Game.renderer.others = Net.role ? [...Net.others.values()].filter(o => o.x !== undefined) : null;
   Game.renderer.render(
     { x: p.x, y: p.y, z: p.eyeZ, yaw: p.yaw, pitch: p.pitch, lantern: Game.lantern * flicker },
@@ -4672,8 +5132,66 @@ function boot() {
   window.addEventListener('beforeunload', writeSave);
   document.addEventListener('visibilitychange', () => { if (document.hidden && Game.state === 'play') pause(); });
   setupMultiplayer();
+  setupFishing();
   Music.onChange = tr => { UI.renderTracks(); if (tr) UI.toast('♪ ' + escapeHtml(tr.name), 3000); };
   requestAnimationFrame(frame);
+}
+
+// ---------------- Aktionen (E / Klick) und Angeln ----------------
+function fishCond() {
+  const S = computeSky(Game.time);
+  return {
+    night: S.night > 0.5,
+    twilight: Math.abs(S.sunDir[2]) < 0.2,
+    rain: Game.weather ? Game.weather.rain : 0,
+  };
+}
+
+function handleAction() {
+  Fishing.press(Game.world, Game.player, fishCond());
+}
+
+let hintTimer = 0, hintSpot = false;
+function updateActionHint() {
+  const st = Fishing.state;
+  UI.reelBar(st === 'reel', Fishing.progress, Fishing.tension, Fishing.pulling);
+  if (st === 'bite') { UI.actionHint('Biss! Jetzt <b>E</b>!', true); return; }
+  if (st === 'reel') { UI.actionHint(''); if (Input.down('KeyE', 'Mouse0') && Math.random() < 0.25) Sound.fishSound('reel'); return; }
+  if (st === 'waiting' || st === 'flying') { UI.actionHint('Warte auf einen Biss … <b>E</b> = einholen'); return; }
+  hintTimer -= 1 / 30;
+  if (hintTimer <= 0) { hintTimer = 0.3; hintSpot = !!Fishing.findSpot(Game.world, Game.player); }
+  UI.actionHint(hintSpot ? '<b>E</b> – Angel auswerfen' : '');
+}
+
+function setupFishing() {
+  Fishing.loadJournal();
+  Fishing.onEvent = (type, data) => {
+    if (['cast', 'plop', 'nibble', 'bite', 'hook', 'pull', 'snap'].includes(type)) Sound.fishSound(type);
+    if (type === 'msg') UI.toast(data, 2600);
+    if (type === 'catch') {
+      Sound.fishSound('catch');
+      const f = data.fish;
+      let text = f.junk ? `🎣 ${f.name}` : `🎣 <b>${f.name}</b> – ${data.size} cm`;
+      if (data.first) text += ' · <b>Neu im Fangbuch!</b>';
+      else if (data.record) text += ' · <b>Neuer Rekord!</b>';
+      if (f.id === 'flasche') text += '<br>' + bottleMessage();
+      UI.toast(text, 5000);
+      if (Net.role && !f.junk) Net.announce(`${Net.name} hat einen ${f.name} gefangen (${data.size} cm)`);
+    }
+  };
+}
+
+// Flaschenpost: ein Zettel mit einem Hinweis auf einen Ort, den man noch nicht kennt
+function bottleMessage() {
+  const p = Game.player, labels = Game.world.structures.labels;
+  const unknown = labels.filter(l => !Game.map.explored[Math.floor(l.y / Game.map.cell) * EXPL_N + Math.floor(l.x / Game.map.cell)]);
+  const l = (unknown.length ? unknown : labels)[(Math.random() * Math.max(1, (unknown.length ? unknown : labels).length)) | 0];
+  if (!l) return 'Auf dem Zettel steht nur: „Schöner Tag heute.“';
+  const a = Math.atan2(l.y - p.y, l.x - p.x) * 180 / Math.PI + 90;
+  const dirs = ['Norden', 'Nordosten', 'Osten', 'Südosten', 'Süden', 'Südwesten', 'Westen', 'Nordwesten'];
+  const d = dirs[Math.round(((a % 360) + 360) % 360 / 45) % 8];
+  const km = Math.hypot(l.x - p.x, l.y - p.y);
+  return `Auf dem Zettel: „${l.name} liegt etwa ${km > 1000 ? (km / 1000).toFixed(1) + ' km' : Math.round(km / 50) * 50 + ' m'} im ${d}.“`;
 }
 
 // Wenn es länger ruckelt, eine Qualitätsstufe tiefer gehen (nie automatisch höher)
