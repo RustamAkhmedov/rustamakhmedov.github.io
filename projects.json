@@ -1,6 +1,18 @@
 [
   {
     "archived": false,
+    "description": null,
+    "fork": false,
+    "has_pages": true,
+    "homepage": null,
+    "html_url": "https://github.com/RustamAkhmedov/rustamakhmedov.github.io",
+    "language": "HTML",
+    "name": "rustamakhmedov.github.io",
+    "pushed_at": "2026-10-27T05:09:55Z",
+    "stargazers_count": 0
+  },
+  {
+    "archived": false,
     "description": "🎸 Lerne, wo jeder Ton auf dem Gitarren-Griffbrett liegt – Lernpfad, Übungsmodi, Tipps & Tricks, offline nutzbar. Fully vibecoded.",
     "fork": false,
     "has_pages": true,
@@ -9,18 +21,6 @@
     "language": "JavaScript",
     "name": "fretlearn",
     "pushed_at": "2026-10-26T22:50:14Z",
-    "stargazers_count": 0
-  },
-  {
-    "archived": false,
-    "description": null,
-    "fork": false,
-    "has_pages": true,
-    "homepage": null,
-    "html_url": "https://github.com/RustamAkhmedov/rustamakhmedov.github.io",
-    "language": "HTML",
-    "name": "rustamakhmedov.github.io",
-    "pushed_at": "2026-10-26T22:42:16Z",
     "stargazers_count": 0
   },
   {
