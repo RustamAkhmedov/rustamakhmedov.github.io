@@ -1,18 +1,6 @@
 [
   {
     "archived": false,
-    "description": null,
-    "fork": false,
-    "has_pages": true,
-    "homepage": null,
-    "html_url": "https://github.com/RustamAkhmedov/rustamakhmedov.github.io",
-    "language": "HTML",
-    "name": "rustamakhmedov.github.io",
-    "pushed_at": "2026-11-05T19:59:01Z",
-    "stargazers_count": 0
-  },
-  {
-    "archived": false,
     "description": "Aus Fotos und Mitschriften werden interaktive Offline-Lernseiten – mit Claude, Gemini oder lokal (Ollama)",
     "fork": false,
     "has_pages": false,
@@ -20,8 +8,92 @@
     "html_url": "https://github.com/RustamAkhmedov/genut",
     "language": "Python",
     "name": "genut",
-    "pushed_at": "2026-11-04T10:06:23Z",
+    "pushed_at": "2026-11-06T08:43:20Z",
     "stargazers_count": 1
+  },
+  {
+    "archived": false,
+    "description": "Personal portfolio website",
+    "fork": false,
+    "has_pages": true,
+    "homepage": null,
+    "html_url": "https://github.com/RustamAkhmedov/portfolio",
+    "language": "HTML",
+    "name": "portfolio",
+    "pushed_at": "2026-11-06T07:42:35Z",
+    "stargazers_count": 0
+  },
+  {
+    "archived": false,
+    "description": "Sudoku game for the browser, built with React",
+    "fork": false,
+    "has_pages": true,
+    "homepage": "",
+    "html_url": "https://github.com/RustamAkhmedov/Sudoku",
+    "language": "JavaScript",
+    "name": "Sudoku",
+    "pushed_at": "2023-12-14T17:25:09Z",
+    "stargazers_count": 0
+  },
+  {
+    "archived": false,
+    "description": "Store web app built with Django",
+    "fork": false,
+    "has_pages": false,
+    "homepage": "",
+    "html_url": "https://github.com/RustamAkhmedov/Store",
+    "language": "Python",
+    "name": "Store",
+    "pushed_at": "2023-11-16T18:01:35Z",
+    "stargazers_count": 0
+  },
+  {
+    "archived": false,
+    "description": "REST API built with Django",
+    "fork": false,
+    "has_pages": false,
+    "homepage": "",
+    "html_url": "https://github.com/RustamAkhmedov/rest_api_project",
+    "language": "Python",
+    "name": "rest_api_project",
+    "pushed_at": "2023-08-24T12:27:02Z",
+    "stargazers_count": 0
+  },
+  {
+    "archived": false,
+    "description": "Static blog page built with HTML and CSS",
+    "fork": false,
+    "has_pages": true,
+    "homepage": "",
+    "html_url": "https://github.com/RustamAkhmedov/Blog",
+    "language": "HTML",
+    "name": "Blog",
+    "pushed_at": "2023-04-04T13:28:33Z",
+    "stargazers_count": 0
+  },
+  {
+    "archived": false,
+    "description": null,
+    "fork": false,
+    "has_pages": false,
+    "homepage": null,
+    "html_url": "https://github.com/RustamAkhmedov/RustamAkhmedov",
+    "language": null,
+    "name": "RustamAkhmedov",
+    "pushed_at": "2026-11-06T06:56:45Z",
+    "stargazers_count": 0
+  },
+  {
+    "archived": false,
+    "description": null,
+    "fork": false,
+    "has_pages": true,
+    "homepage": null,
+    "html_url": "https://github.com/RustamAkhmedov/rustamakhmedov.github.io",
+    "language": "HTML",
+    "name": "rustamakhmedov.github.io",
+    "pushed_at": "2026-11-06T06:52:20Z",
+    "stargazers_count": 0
   },
   {
     "archived": false,
@@ -33,18 +105,6 @@
     "language": "JavaScript",
     "name": "fretlearn",
     "pushed_at": "2026-10-26T22:50:14Z",
-    "stargazers_count": 0
-  },
-  {
-    "archived": false,
-    "description": "Personal portfolio website",
-    "fork": false,
-    "has_pages": true,
-    "homepage": null,
-    "html_url": "https://github.com/RustamAkhmedov/portfolio",
-    "language": "HTML",
-    "name": "portfolio",
-    "pushed_at": "2026-10-07T19:07:49Z",
     "stargazers_count": 0
   },
   {
@@ -117,54 +177,6 @@
     "language": "JavaScript",
     "name": "OnlineIDE",
     "pushed_at": "2026-07-12T21:05:35Z",
-    "stargazers_count": 0
-  },
-  {
-    "archived": false,
-    "description": null,
-    "fork": false,
-    "has_pages": true,
-    "homepage": null,
-    "html_url": "https://github.com/RustamAkhmedov/Sudoku",
-    "language": "JavaScript",
-    "name": "Sudoku",
-    "pushed_at": "2023-12-14T17:25:09Z",
-    "stargazers_count": 0
-  },
-  {
-    "archived": false,
-    "description": null,
-    "fork": false,
-    "has_pages": false,
-    "homepage": null,
-    "html_url": "https://github.com/RustamAkhmedov/Store",
-    "language": "Python",
-    "name": "Store",
-    "pushed_at": "2023-11-16T18:01:35Z",
-    "stargazers_count": 0
-  },
-  {
-    "archived": false,
-    "description": null,
-    "fork": false,
-    "has_pages": false,
-    "homepage": null,
-    "html_url": "https://github.com/RustamAkhmedov/rest_api_project",
-    "language": "Python",
-    "name": "rest_api_project",
-    "pushed_at": "2023-08-24T12:27:02Z",
-    "stargazers_count": 0
-  },
-  {
-    "archived": false,
-    "description": null,
-    "fork": false,
-    "has_pages": true,
-    "homepage": null,
-    "html_url": "https://github.com/RustamAkhmedov/Blog",
-    "language": "HTML",
-    "name": "Blog",
-    "pushed_at": "2023-04-04T13:28:33Z",
     "stargazers_count": 0
   }
 ]
