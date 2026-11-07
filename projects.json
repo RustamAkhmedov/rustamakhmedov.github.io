@@ -1,6 +1,18 @@
 [
   {
     "archived": false,
+    "description": null,
+    "fork": false,
+    "has_pages": true,
+    "homepage": null,
+    "html_url": "https://github.com/RustamAkhmedov/rustamakhmedov.github.io",
+    "language": "HTML",
+    "name": "rustamakhmedov.github.io",
+    "pushed_at": "2026-11-06T19:26:29Z",
+    "stargazers_count": 0
+  },
+  {
+    "archived": false,
     "description": "Aus Fotos und Mitschriften werden interaktive Offline-Lernseiten – mit Claude, Gemini oder lokal (Ollama)",
     "fork": false,
     "has_pages": false,
@@ -81,18 +93,6 @@
     "language": null,
     "name": "RustamAkhmedov",
     "pushed_at": "2026-11-06T06:56:45Z",
-    "stargazers_count": 0
-  },
-  {
-    "archived": false,
-    "description": null,
-    "fork": false,
-    "has_pages": true,
-    "homepage": null,
-    "html_url": "https://github.com/RustamAkhmedov/rustamakhmedov.github.io",
-    "language": "HTML",
-    "name": "rustamakhmedov.github.io",
-    "pushed_at": "2026-11-06T06:52:20Z",
     "stargazers_count": 0
   },
   {
