@@ -1,6 +1,18 @@
 [
   {
     "archived": false,
+    "description": "Portfolio: Explosionszeichnung (three.js, de/en)",
+    "fork": false,
+    "has_pages": true,
+    "homepage": null,
+    "html_url": "https://github.com/RustamAkhmedov/portfolio2",
+    "language": "TypeScript",
+    "name": "portfolio2",
+    "pushed_at": "2026-11-08T20:36:17Z",
+    "stargazers_count": 0
+  },
+  {
+    "archived": false,
     "description": null,
     "fork": false,
     "has_pages": true,
@@ -8,7 +20,7 @@
     "html_url": "https://github.com/RustamAkhmedov/rustamakhmedov.github.io",
     "language": "HTML",
     "name": "rustamakhmedov.github.io",
-    "pushed_at": "2026-11-08T06:06:08Z",
+    "pushed_at": "2026-11-08T13:28:44Z",
     "stargazers_count": 0
   },
   {
